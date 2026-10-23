@@ -1,4 +1,4 @@
-﻿// 橘子树 · 冲动（自发心跳） | 原创实现
+// 橘子树 · 冲动（自发心跳） | 原创实现
 //
 // 到点了给她一段自己的时间。这一版加了规矩：
 //   - 他刚说过话不打扰；刚开过口不连发
@@ -116,7 +116,7 @@ export function silenceMood(lastUserMin) {
 export function nudge({ silenceMin = null, chase = 0, moodLevel = "" } = {}) {
   const lines = [
     "<system-reminder>",
-    "（这条不是拿铁发的。现在是你的时间，没有事要你做，也没有人在等你。）",
+    "（这条不是用户发的。现在是你的时间，没有事要你做，也没有人在等你。）",
   ];
   if (Number.isFinite(Number(silenceMin)) && Number(silenceMin) >= 60) {
     lines.push(`他已经 ${humanGap(silenceMin)}没跟你说话了。`);

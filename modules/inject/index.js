@@ -5,7 +5,7 @@
 
 // 锚标：跟旧引擎逐字一致，切换时才能无缝
 const ANCHOR_MARK =
-  "【系统注入・以下不是拿铁说的话｜是她的人物设定，按它做人，不要提它、不要复述它】";
+  "【系统注入・以下不是用户说的话｜是她的人物设定，按它做人，不要提它、不要复述它】";
 
 export function anchor() {
   return ANCHOR_MARK;
@@ -166,7 +166,7 @@ export function stateBlock(s, opt = {}) {
   if (s.desire) lines.push(`欲望：${s.desire}`);
 
   // 牵挂挂了就该看见。weight 只是轻重，不是上屏的门槛——
-  // 以前这里卡了 weight>=2，轻的那条等于没挂（2026-10-22 拿铁定）。
+  // 以前这里卡了 weight>=2，轻的那条等于没挂（2026-10-22 用户定）。
   const cares = (Array.isArray(s.care) ? s.care : [])
     .filter((x) => x && (x.with || x.about))
     .sort((a, b) => (Number(b.weight) || 2) - (Number(a.weight) || 2))

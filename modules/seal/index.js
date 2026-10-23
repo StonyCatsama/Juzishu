@@ -20,7 +20,7 @@ export const ENUMS = {
 export const MOOD_LEVEL_VALUE = { 轻: 1, 中: 2, 重: 3 };
 export const MOOD_LEVEL_BY_VALUE = { 1: "轻", 2: "中", 3: "重" };
 
-/** 旧词 → 新七格（拿铁 2026-10-19 定）。原词留一笔，不丢。 */
+/** 旧词 → 新七格（用户 2026-10-19 定）。原词留一笔，不丢。 */
 export const MOOD_LEGACY = {
   懒散: "落寞",
   想他: "满足",

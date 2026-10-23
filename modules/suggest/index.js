@@ -1,7 +1,7 @@
 // 橘子树 · 抽屉代办 | 原创实现
 //
 // 她想把一条设定收进抽屉，先提议，不直接写库。
-// 提议落在 dataDir/drawer-suggestions.json，等拿铁在面板上点“收下”才真的进抽屉。
+// 提议落在 dataDir/drawer-suggestions.json，等用户在面板上点“收下”才真的进抽屉。
 // 理由：抽屉是长期设定的源头，一条写歪了会一直影响她，得有人过一眼。
 
 import fs from "node:fs";

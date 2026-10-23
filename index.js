@@ -254,7 +254,7 @@ export default defineApp(async (sdk) => {
       return;
     }
 
-    // rec.note：拿铁点名重写时给的附加要求。和提示词冲突时以它为准。
+    // rec.note：用户点名重写时给的附加要求。和提示词冲突时以它为准。
     const note = String(rec?.note || "").trim();
     const isNight = slot.id === "night";
     const head =
@@ -300,7 +300,7 @@ export default defineApp(async (sdk) => {
   /**
    * 开机派信队列：app-data/juzishu/redraft.json
    * [{"agentId":"<角色 id>","slot":"morning","note":"把 10-20 的早上重写一遍"}]
-   * 派完清空。拿铁点名重写某一档就走这里，不用碰定时器。
+   * 派完清空。用户点名重写某一档就走这里，不用碰定时器。
    */
   async function runRedraft() {
     const p = pathMod.join(dataDir, "redraft.json");
@@ -347,7 +347,7 @@ export default defineApp(async (sdk) => {
   // 等装配完再跑第一拍：readText 这类工具在后面才定义，提早跑会静默失败
   setTimeout(() => {
     clock.tick().catch(() => {});
-    // 拿铁点名重写的那些档，开机就派出去（派完清空队列）
+    // 用户点名重写的那些档，开机就派出去（派完清空队列）
     runRedraft().catch(() => {});
   }, 5_000);
 
@@ -599,7 +599,7 @@ export default defineApp(async (sdk) => {
         }
 
         // 投到她的主会话：提示藏起来，她的话显出来。
-        // 主会话是拿铁自己的，要 scope:"all" + app/sessions.manage 才写得进去。
+        // 主会话是用户自己的，要 scope:"all" + app/sessions.manage 才写得进去。
         const target = String(ch.mainSession || "").trim();
         const settle = (pr) => {
           pr.catch(() => {});
@@ -1068,14 +1068,14 @@ export default defineApp(async (sdk) => {
         return { content: [{ type: "text", text: JSON.stringify(s, null, 2) }], details: { status: s } };
       },
     });
-    // 选项卡片已停用，代码已移除（2026-10-20 拿铁定）。
+    // 选项卡片已停用，代码已移除（2026-10-20 用户定）。
 
     // 写信前看这段说了什么：只捞时间窗内的人话，并把要审的那段原文一并递回去
     sdk.tools.register({
       name: "today_talk",
       description:
         HOW_TO_CALL_HEAD +
-        "写档前看这一段跟拿铁说了什么：只捞时间窗内的人话（剥动作、剥工具、剥内心）。\n" +
+        "写档前看这一段跟用户说了什么：只捞时间窗内的人话（剥动作、剥工具、剥内心）。\n" +
         "**from 填档位起点**：早档 `18:00`（跨零点，含昨晚）、中档 `07:00`、晚档 `12:00`；上界自动是现在。\n" +
         "**section 填你要动的那一段**（早上/下午/晚上/天气/明天），会把那一段现在的原文一并递回来——那是拿来 **审** 的，不是拿来抄的。\n" +
         HOW_TO_CALL,
@@ -1094,7 +1094,7 @@ export default defineApp(async (sdk) => {
       },
       async execute(input) {
         const id = String(input?.agentId || "");
-        // 活室、写信室、心跳室都是她干活的地方，不算“今天跟拿铁说了什么”
+        // 活室、写信室、心跳室都是她干活的地方，不算“今天跟用户说了什么”
         let exclude = [];
         try {
           const st = await clock.state(id);
@@ -1368,7 +1368,7 @@ export default defineApp(async (sdk) => {
             talkStore.add({ from, to, text });
             const n = talkStore.list("pending").length;
             return {
-              content: [{ type: "text", text: `先在待转达里排着了（共 ${n} 条）。拿铁点过才会送到${NAMES[to] || to}那里。` }],
+              content: [{ type: "text", text: `先在待转达里排着了（共 ${n} 条）。用户点过才会送到${NAMES[to] || to}那里。` }],
               details: { queued: true, pending: n },
             };
           } catch (e) {
@@ -1403,12 +1403,12 @@ export default defineApp(async (sdk) => {
       },
     });
 
-    // 想到值得进抽屉的设定：先提议，等拿铁点确认
+    // 想到值得进抽屉的设定：先提议，等用户点确认
     sdk.tools.register({
       name: "drawer_suggest",
       description:
         HOW_TO_CALL_HEAD +
-        "提议一条该收进抽屉（世界书）的设定。不会直接写进去——落到代办区等拿铁确认。\n\n" +
+        "提议一条该收进抽屉（世界书）的设定。不会直接写进去——落到代办区等用户确认。\n\n" +
         "**提之前先用 `today_talk` 把当天会话过一遍**——别凭印象想今天发生了什么。\n\n" +
         "**三条判据，中一条才能提**：\n" +
         "① 越界／确认：关系比上次更近了（认了件事、应下了什么）；\n" +
@@ -1446,7 +1446,7 @@ export default defineApp(async (sdk) => {
           content: [
             {
               type: "text",
-              text: r.duplicate ? "这条已经提过了，还在代办区等着。" : "已放进代办区，等拿铁点头。",
+              text: r.duplicate ? "这条已经提过了，还在代办区等着。" : "已放进代办区，等用户点头。",
             },
           ],
           details: r,

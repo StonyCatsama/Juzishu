@@ -1,0 +1,37 @@
+﻿{
+  "schema": "juzishu.character/1",
+  "id": "_example",
+  "name": "小橘",
+  "aliases": [],
+  "avatar": "avatar.png",
+  "timezone": "Asia/Shanghai",
+  "persona": "persona.md",
+  "prompts": {
+    "identity": "identity.md",
+    "agents": "AGENTS.md",
+    "publicAgents": "public-agents.md"
+  },
+  "worldbook": "worldbook.json",
+  "letters": {
+    "slots": [
+      { "id": "morning", "at": "07:00", "prompt": "letters/morning.md" },
+      { "id": "noon", "at": "12:00", "prompt": "letters/noon.md" },
+      { "id": "evening", "at": "18:00", "prompt": "letters/evening.md" }
+    ]
+  },
+  "state": {
+    "mood": { "enabled": false, "baseline": {} },
+    "hunger": ["饱", "有点饿", "饿"],
+    "energy": ["精神", "有点乏", "累"],
+    "desire": ["不想", "一般", "想", "主动"]
+  },
+  "wake": {
+    "enabled": false,
+    "checkEveryMin": 21,
+    "quiet": ["01:00", "07:00"],
+    "maxPerDay": 4
+  },
+  "map": null,
+  "st": { "spec": null, "raw": null },
+  "example": true
+}

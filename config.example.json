@@ -1,0 +1,43 @@
+{
+  "schema": "juzishu.config/1",
+  "dataDir": "",
+  "characters": [],
+  "defaults": {
+    "timezone": "Asia/Shanghai",
+    "wake": {
+      "enabled": true,
+      "checkEveryMin": 21,
+      "idleMin": 25,
+      "gapMin": 45,
+      "maxPerDay": 4,
+      "quiet": ["01:00", "07:00"],
+      "maxChase": 2,
+      "afterMin": 90,
+      "afterMaxMin": 180
+    },
+    "mood": {
+      "halfLifeH": 6,
+      "minHoldMin": 40,
+      "strongLevel": 2
+    },
+    "recall": {
+      "agents": [],
+      "minChars": 0,
+      "clip": 340,
+      "tailByAgent": {},
+      "hintByAgent": {},
+      "hintRecallByAgent": {}
+    },
+    "work": {
+      "agents": [],
+      "dirs": [],
+      "anchors": {}
+    },
+    "inject": {
+      "maxChars": 4000
+    },
+    "talk": {
+      "requireConfirm": true
+    }
+  }
+}

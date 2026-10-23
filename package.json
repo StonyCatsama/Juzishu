@@ -1,0 +1,8 @@
+{
+  "name": "juzishu",
+  "version": "0.1.0",
+  "description": "橘子树 —— 角色生活系统",
+  "main": "index.js",
+  "type": "module",
+  "private": true
+}

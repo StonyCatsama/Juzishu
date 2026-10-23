@@ -1,0 +1,42 @@
+{
+  "manifestVersion": 2,
+  "id": "juzishu",
+  "name": "橘子树",
+  "version": "0.1.0",
+  "description": "角色生活系统：人格、世界书、状态、日子、唤醒，一体。",
+  "entry": "index.js",
+  "icon": "assets/icon.png",
+  "minAppVersion": "0.982.0",
+  "capabilities": [
+    "app/ui.open-external",
+    "app/resources.read",
+    "app/resources.write",
+    "app/tools.expose-to-model",
+    "app/session.start-turn",
+    "app/hooks.provider-before-request",
+    "app/sessions.search",
+    "app/sessions.read",
+    "app/sessions.manage",
+    "app/session.permission-mode",
+    "app/environments.read",
+    "app/environments.manage"
+  ],
+  "contributes": {
+    "cards": [
+      {
+        "id": "orchard",
+        "title": "橘子树",
+        "description": "角色、状态、日子，一屏看",
+        "route": "/orchard.html",
+        "cardForm": "flush",
+        "realization": "page",
+        "fpFullPanel": true,
+        "siteNavEntry": false,
+        "closable": true,
+        "face": {
+          "image": "assets/icon.png"
+        }
+      }
+    ]
+  }
+}

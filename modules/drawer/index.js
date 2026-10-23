@@ -48,8 +48,20 @@ export function createWorldbookStore({ sdk, home, dataDir }) {
 
   async function open() {
     await ensureDb();
+    try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch { /* 建不了就等下面报 */ }
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(dbPath);
+    // 新用户首次安装：库里什么都没有，两张表都得自己建。
+    // 以前只建了 links，entries 靠旧插件库带——干净环境一查就 ERR_SQLITE_ERROR。
+    try {
+      db.exec(
+        "CREATE TABLE IF NOT EXISTS worldbook_entries (" +
+          "id TEXT PRIMARY KEY, agent_id TEXT, name TEXT, dir TEXT, policy TEXT, " +
+          "trigger TEXT, regex INTEGER, replace TEXT, \"limit\" INTEGER, allow TEXT, " +
+          "priority INTEGER, match TEXT, logic TEXT, conditions TEXT, body TEXT, " +
+          "enabled INTEGER, fingerprint TEXT, source TEXT, created_at TEXT, updated_at TEXT)"
+      );
+    } catch { /* 建不了就等下面的查询自己报 */ }
     // 关系表：细节挂到总览，note 是总览视角的那句补充
     try {
       db.exec(

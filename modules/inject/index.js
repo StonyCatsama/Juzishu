@@ -93,8 +93,7 @@ export function buildPreview({ entries, text, timeBlock: tb, stateBlock: sb, rec
     used += recall.length;
   }
 
-  // 各段之间空一行：一段接一段全挤在一起就没法读，像一坨台台
-  const body = parts.map((p) => p.body).join("\n\n");
+  const body = parts.map((p) => p.body).join("\n");
   return {
     text: body ? ANCHOR_MARK + "\n" + body : "",
     chars: body.length,

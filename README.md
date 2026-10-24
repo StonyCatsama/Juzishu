@@ -120,6 +120,16 @@
 > *Letters are written at **07:00 / 12:00 / 18:00** by default. The window is fixed, it fires on time, once a day. If it wakes more than three hours late (say the host was off all morning), it records a `missed` rather than pretending it just happened. The optional fourth slot, "收尾" (wind-down), you add yourself with `{ "id": "night", "at": "23:50" }` in `slots`, and its prompt file at `letters/night.md`. The wind-down slot does two extra things: it goes back over the day's conversation without writing the diary, then proposes whatever is worth keeping into the drawer via `drawer_suggest` — landing in the to-do area for approval, never written directly.*
 
 
+## 状态 · State
+
+每个角色有一套状态读数，内置的是心情、饥饿、精力三格——她自己用 `state_write` 改，注入里会跟着变。
+
+**状态这块有一定的兼容性。**数据结构上它能容纳更多读数，比如醉酒值、清洁度这类，都加得进去；只是现在还做不到“改配置就生效”，加一格需要在 `modules/seal` 里补一个字段、在 `modules/inject` 里补一行渲染。以后会开放成配置驱动，一个角色想要什么状态，在 `profile.json` 里写一行就行。
+
+> Each character carries a set of state readings. Three are built in: mood, hunger, energy — she changes them herself with `state_write`, and the injection follows.
+
+> **The state layer is somewhat extensible.** The data structure can hold more readings — intoxication, cleanliness, that sort of thing all fit. It isn't configuration-driven yet, though: adding a field currently means adding one input in `modules/seal` and one rendering line in `modules/inject`. The plan is to make it config-driven, so a character's extra states are just a line in `profile.json`.
+
 ## 自发心跳 · Spontaneous heartbeat
 
 

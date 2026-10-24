@@ -67,7 +67,15 @@ export function registerCharacterRoutes(app, { store, sdk, onCreated, onRemoved 
           agentsMd: d.agents || d.persona || "",
         }).catch((e2) => { throw Object.assign(new Error(`bus:${e1?.message || e1} / env:${e2?.message || e2}`), { status: 500 }); });
       }
-      return c.json({ ok: true, via, agent: r.agent });
+      // 回退到环境建出来的人，界面上看不到——不能报得跟正路一样
+      return c.json({
+        ok: true,
+        via,
+        agent: r.agent,
+        ...(via === "env"
+          ? { warning: "建是建了，但只建在环境副本里，界面上看不到这个人。多半是缺 app/agents.manage 授权" }
+          : {}),
+      });
     } catch (e) {
       await sdk.logger?.warn?.(`[agent] 建 ${id} 失败：${e?.message || e}`);
       return c.json({ ok: false, err: String(e?.message || e) }, 500);

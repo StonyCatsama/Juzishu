@@ -27,6 +27,7 @@
 | `app/hooks.provider-before-request` | 每轮注入 |
 | `app/session.start-turn` | 到点叫醒她写信 |
 | `app/sessions.read` `app/sessions.manage` | 读当天会话、往主会话投递 |
+| `app/agents.manage` `app/agents.read` | 建角色时同步建出宿主里的 agent（不给就只能建半截，界面上看不到人） |
 
 **先停旧插件。** 旧的世界书/状态插件如果还开着，会和本 App 双注入、抢同名工具（`state_write`）。
 

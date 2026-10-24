@@ -1238,7 +1238,7 @@
       let agentMsg = "";
       try {
         const ra = await apiFetch("/characters/" + encodeURIComponent(r.id) + "/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ yuan: "hanako" }) });
-        agentMsg = ra?.ok ? "，agent 也建好了" : `，agent 没建成：${ra?.err || "?"}`;
+        agentMsg = ra?.ok ? (ra.warning ? `，${ra.warning}` : "，agent 也建好了") : `，agent 没建成：${ra?.err || "?"}`;
       } catch (e) { agentMsg = "，agent 没建成"; }
       toast("建好了：" + name + agentMsg + "（重开 Hana 后才会跑时钟与注入）");
       SEAL = null;
@@ -1255,7 +1255,13 @@
     try {
       const r = await apiFetch("/characters/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ card, id: id || undefined }) });
       if (!r?.ok) { toast(r?.err || "没导入"); return; }
-      toast("导入 " + (r.name || "") + "，抽屉 " + (r.entries || 0) + " 条");
+      // 导入和新建一样，包建好了就得把 agent 也建出来——不然卡只是个文件夹
+      let agentMsg = "";
+      try {
+        const ra = await apiFetch("/characters/" + encodeURIComponent(r.id) + "/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ yuan: "hanako" }) });
+        agentMsg = ra?.ok ? (ra.warning ? `，${ra.warning}` : "，agent 也建好了") : `，agent 没建成：${ra?.err || "?"}`;
+      } catch (e) { agentMsg = "，agent 没建成"; }
+      toast("导入 " + (r.name || "") + "，抽屉 " + (r.entries || 0) + " 条" + agentMsg);
       SEAL = null;
       SEALSEL = r.id || SEALSEL;
       await loadSeal();

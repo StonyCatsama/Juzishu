@@ -19,7 +19,9 @@
     "app/sessions.manage",
     "app/session.permission-mode",
     "app/environments.read",
-    "app/environments.manage"
+    "app/environments.manage",
+    "app/agents.read",
+    "app/agents.manage"
   ],
   "contributes": {
     "cards": [

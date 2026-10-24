@@ -124,7 +124,7 @@ export function timeBlock({ date, timeText, sinceMin, place, placeState, moodWhy
   if (place) lines.push(placeState ? `[此刻] 在${place}，${placeState}。` : `[此刻] 在${place}。`);
   if (moodWhy) lines.push(`[心绪] ${moodWhy}`);
   if (sinceMin !== null && sinceMin !== undefined) lines.push(`[距上次对话] ${humanGap(sinceMin)}`);
-  lines.push("[时间提示] 现在的时间以这个为准。");
+  lines.push("[时间提示] 以这个为准。你不在他面前的时候，时间也在走。");
   return lines.join("\n");
 }
 

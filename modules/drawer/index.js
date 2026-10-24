@@ -146,6 +146,24 @@ export function createWorldbookStore({ sdk, home, dataDir }) {
     });
   }
 
+  /** 删卡时把抽屉里属于这个人的条目一并收走。
+   *  不收的话它们会挂在已经不存在的人身上，永远查不出来也清不掉。 */
+  async function removeByAgent(agentId) {
+    const aid = String(agentId || "").trim();
+    if (!aid) return { ok: true, removed: 0 };
+    return mutate((db) => {
+      let ids = [];
+      try {
+        ids = db.prepare("SELECT id FROM worldbook_entries WHERE agent_id = ?").all(aid).map((r) => r.id);
+      } catch { ids = []; }
+      for (const k of ids) {
+        try { db.prepare("DELETE FROM worldbook_links WHERE child_id = ? OR parent_id = ?").run(k, k); } catch { /* 关系表不在就算了 */ }
+      }
+      const info = db.prepare("DELETE FROM worldbook_entries WHERE agent_id = ?").run(aid);
+      return { ok: true, removed: info.changes };
+    });
+  }
+
   async function remove(id) {
     const key = String(id || "").trim();
     if (!key) throw Object.assign(new Error("缺少 id"), { status: 400 });
@@ -287,7 +305,7 @@ export function createWorldbookStore({ sdk, home, dataDir }) {
     return { ok: true, mode: "after", anchor: key };
   }
 
-  return { list, upsert, remove, create, addLink, removeLink, parentsOf, childrenOf, appendBody, insertAfter, setBody, dbPath };
+  return { list, upsert, remove, removeByAgent, create, addLink, removeLink, parentsOf, childrenOf, appendBody, insertAfter, setBody, dbPath };
 }
 
 /** 从属映射：静态 JSON → id 索引。读不到就返回空，不影响主流程。 */

@@ -13,7 +13,7 @@ export const ENUMS = {
   moodLevel: ["轻", "中", "重"],
   hunger: ["饱", "有点饿", "饿"],
   energy: ["精神", "有点乏", "累"],
-  desire: ["不想", "一般", "想", "主动"],
+  // 发布版不带欲望那格：那是本机自用的事，不该是开箱默认值。
 };
 
 /** 三档的强度，只用来算回落，不往描写里塞数字。 */
@@ -41,7 +41,7 @@ const EMPTY = {
   care: [],
   body: { hunger: "", energy: "" },
   special: [],
-  desire: "",
+  // desire 字段不进发布版（旧数据里残留也不读）
   place: null,
   updatedAt: null,
   tsLocal: null,
@@ -205,7 +205,6 @@ export function createSealStore({ sdk, home, dataDir, mood, tzOf, talkCount, rea
     if (s.moodAt === undefined) s.moodAt = s.moodSince || base || null;
     if (s.hungerSince === undefined) s.hungerSince = s.body.hunger ? base : null;
     if (s.energySince === undefined) s.energySince = s.body.energy ? base : null;
-    if (s.desireSince === undefined) s.desireSince = s.desire ? base : null;
     // money 字段已下线（2026-10-23）。盘上还残着空串的，读的时候当不存在。
     if ("money" in s) delete s.money;
     return s;
@@ -393,16 +392,6 @@ export function createSealStore({ sdk, home, dataDir, mood, tzOf, talkCount, rea
         if (n.v !== cur.body.energy) cur.energySince = now;
         cur.body.energy = n.v;
         notes.push(`精力=${cur.body.energy}`);
-      }
-    }
-
-    if (patch.desire !== undefined) {
-      const n = norm(patch.desire, ENUMS.desire);
-      if (n.note) notes.push(n.note);
-      if (n.ok) {
-        if (n.v !== cur.desire) cur.desireSince = now;
-        cur.desire = n.v;
-        notes.push(`欲望=${cur.desire}`);
       }
     }
 

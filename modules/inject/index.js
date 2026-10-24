@@ -149,21 +149,20 @@ export function stateBlock(s, opt = {}) {
   if (word) {
     const lv = opt.mood !== undefined ? "" : (s.moodLevelNow || s.moodNow || s.moodLevel || "");
     // 程度得说清楚：看注入的人不一定知道“重”是什么样
-    const gloss = { 轻: "只带在脸色上", 中: "已经在动作里", 重: "压过眼下的事" }[lv];
-    mood = `心情：${word}${lv ? `（${lv}${gloss ? "：" + gloss : ""}）` : ""}`;
+    const gloss = { 轻: "只带在脸色上，嘴上还是平常的样子", 中: "已经在动作里了，掩不住", 重: "压过眼下正在做的事，话会短、会走神" }[lv];
+    mood = `心情：${word}${lv ? `（${lv}：你的心情${gloss}）` : ""}`;
     const u = opt.mood === undefined ? s.moodUnderNow : null;
     if (u?.word) mood += `，底下垫着${u.word}（${u.level}）`;
     lines.push(mood);
   }
 
-  const bodyParts = [];
-  const hunger = s.hungerNow || body.hunger; // 用现值：饭点过了就是过了，不看她上次写的
-  if (hunger) bodyParts.push(hunger === "饱" ? "饱着" : hunger === "有点饿" ? "有点饿" : "饿了");
-  if (body.energy) bodyParts.push(`精力${body.energy}`);
-  if (bodyParts.length) lines.push(`身体：${bodyParts.join("，")}`);
+  // 一格一行：挤成“身体：饿了，精力精神”读过去就滑了，分开才落到眼里。
+  const hunger2 = s.hungerNow || body.hunger; // 用现值：饭点过了就是过了，不看她上次写的
+  if (hunger2) lines.push(`饥饿：${hunger2 === "饱" ? "饱着" : hunger2 === "有点饿" ? "有点饿" : "饿了"}`);
+  if (body.energy) lines.push(`精力：${body.energy}`);
 
-  // 愿望不设“平平就不显示”的门槛——那格是她自己的读数，一般也是读数。
-  if (s.desire) lines.push(`欲望：${s.desire}`);
+  // 欲望那格不进发布版：那属于本机自用的事，不该是开箱默认值。
+  // 字段还留着（旧数据不能坏），只是不渲染、不注入。
 
   // 牵挂挂了就该看见。weight 只是轻重，不是上屏的门槛——
   // 以前这里卡了 weight>=2，轻的那条等于没挂（2026-10-22 用户定）。
@@ -179,10 +178,18 @@ export function stateBlock(s, opt = {}) {
     .slice(0, 2);
   if (sp.length) lines.push(`身上：${sp.map((x) => (x.until ? `${x.name}（到 ${x.until}）` : x.name)).join("、")}`);
 
-  // 一格数据都没有就不输出整块——只留一个“现在的状态”标题加一句问话，看着像坏了。
-  if (!lines.length) return "";
+  // 一格数据都没有：也别整块消失。新接入的人本来就什么都没有，
+  // 整块消失等于告她“你没有状态”这回事。给个底，把提醒接上。
+  if (!lines.length) {
+    const out = ["[现在的状态]", "还没记。"];
+    if (opt.hint) out.push("", `你这会儿呢？${opt.hint}`);
+    return out.join("\n");
+  }
 
   const out = ["[现在的状态]", ...lines];
+  // 只给数不够：得告诉她这是“真的”，不是一张待填的表。
+  // 没这句她读到的只是几个词，不会带进语气和动作里。
+  out.push("", "（这是你真实的状态：饿就想着吃的，累了就说话短。心情沉的时候不会忽然很亮。不用报出来，也别装作不是。）");
   if (opt.hint) out.push("", `你这会儿呢？${opt.hint}`);
   return out.join("\n");
 }

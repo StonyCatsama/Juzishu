@@ -81,6 +81,15 @@ export function registerAgentAdoptRoutes(app, { sdk, home, characterStore, onCre
           copied.push(dst);
         } catch { /* 写不进去就留着模板 */ }
       }
+      // 宿主里没有 identity.md 的（只写了 AGENTS），不要从 AGENTS 截——
+      // 那里面是人家的全部设定，搬过来等于把人家的私事当成身份。只写一句最普通的。
+      if (!copied.includes("identity.md")) {
+        const brief = [`# ${name}`, "", `- 你是 ${name}。`].join("\n");
+        try {
+          await sdk.resources.write({ kind: "local-file", path: path.join(created.dir, "identity.md") }, brief);
+          copied.push("identity.md");
+        } catch { /* 写不进去就留着模板 */ }
+      }
       try { await onCreated?.(id); } catch { /* 写配置失败不拦接入 */ }
       return c.json({ ok: true, id, name, dir: created.dir, copied });
     } catch (e) {

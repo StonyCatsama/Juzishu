@@ -39,7 +39,7 @@ export function registerSuggestRoutes(app, { store, drawer, agents, notify }) {
         resolved.push(parent);
       }
 
-      // 名字可以在面板上改（她提的时候可能估得不对：叫“礼物”的其实是“围巾”）
+      // 名字可以在面板上改（她提的时候可能估得不对：叫“礼物”的其实是“那本书”）
       const name = String(body?.name || "").trim() || it.name;
 
       // 同名就不新建——库里已有「氛围」「礼物」这种容器，再 create 会长出第二条同名的。

@@ -7,7 +7,7 @@
 // 默认给通用句，具体措辞从 config 的 defaults.recall 里读。
 
 export const RECALL_DEFAULTS = {
-  agents: [], // 白名单：只给列在这里的人回望；空 = 谁都不回
+  agents: [], // 白名单：留空 = 所有人都回望；填了 = 只给名单里的人
   minChars: 0, // 上一句短到这个数以下就不贴；0 = 只要不是空话都贴
   clip: 340, // 正文超过就夹头尾
   forceWords: [
@@ -16,8 +16,8 @@ export const RECALL_DEFAULTS = {
   ],
   // 通用尾巴（判据），单角色可覆盖
   tail: "——这是你会说的话吗？不是，下一句记得改。",
-  hint: "该改成什么就改成什么（`state_write`）——吃了就改成饱，累了就往下压，欲望上来了或散了就改一格；没变不动。",
-  hintRecall: "（顺带：饿、累、欲望——跟现在的样子对得上吗？不对就改一格（`state_write`）。）",
+  hint: "该改成什么就改成什么（`state_write`）——吃了就改成饱，累了就往下压；没变不动。",
+  hintRecall: "（顺带：饿、累——跟现在的样子对得上吗？不对就改一格（`state_write`）。）",
   // 按角色分开写：谁说的话像不像谁，只有各人那一句才对得上
   tailByAgent: {},
   hintByAgent: {},
@@ -64,9 +64,12 @@ export function shouldRecall(prevAssistant, prevUser, cfg = RECALL_DEFAULTS) {
   return body.length >= (Number(cfg.minChars) || 0);
 }
 
-/** 回望该不该轮到这个人。 */
+/** 回望该不该轮到这个人。
+ *  名单空着 = 谁都可以（刚接入的人不该被卡在外面）；
+ *  名单写了人 = 只给名单里的，用来单点关掉某些 agent。 */
 export function recallFor(agentId, cfg = RECALL_DEFAULTS) {
-  const list = Array.isArray(cfg.agents) ? cfg.agents : [];
+  const list = Array.isArray(cfg.agents) ? cfg.agents.filter(Boolean).map(String) : [];
+  if (!list.length) return true;
   return list.includes(String(agentId || ""));
 }
 

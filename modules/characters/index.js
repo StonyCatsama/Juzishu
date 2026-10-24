@@ -218,29 +218,15 @@ export function createCharacters({ appDir, dataDir }) {
     return { ok: true, id: cid };
   }
 
-  /** 模板来源：_template（默认）/ _example / 已存在的角色 id（套用现成的人）。 */
+  /** 模板来源：只用 _template 那副空骨架。
+   *  （以前还能套 _kim 那个向导，发布包不带角色之后没这个需要了）*/
   function templateDir(from) {
     const key = String(from || "").trim();
-    // 不指定就用向导的骨架（_kim）；没有向导包才退回空模板
-    if (!key) {
-      const guide = path.join(appDir, "characters", "_kim");
-      if (fs.existsSync(path.join(guide, "profile.json"))) return guide;
-      return tplRoot;
-    }
-    if (key === "guide") {
-      const g = path.join(appDir, "characters", "_kim");
-      if (fs.existsSync(path.join(g, "profile.json"))) return g;
-      return tplRoot;
-    }
-    if (key === "_template") return tplRoot;
-    if (key.startsWith("_")) {
-      const b = path.join(appDir, "characters", key);
-      if (fs.existsSync(path.join(b, "profile.json"))) return b;
-      throw Object.assign(new Error(`没有可套用的模板：${key}`), { status: 404 });
-    }
+    if (!key || key === "_template") return tplRoot;
+    if (key.startsWith("_")) throw Object.assign(new Error("模板不存在：" + key), { status: 404 });
     const mine = path.join(userRoot, safeId(key));
     if (fs.existsSync(path.join(mine, "profile.json"))) return mine;
-    throw Object.assign(new Error(`没有可套用的模板：${key}`), { status: 404 });
+    throw Object.assign(new Error("没有可套用的模板：" + key), { status: 404 });
   }
 
   function create({ id, name, from, aliases, timezone, want, need, who, avatar }) {
@@ -287,6 +273,42 @@ export function createCharacters({ appDir, dataDir }) {
     }
 
     return { ok: true, id: cid, dir: dst };
+  }
+
+  /** 改已有的角色包：名字、别称、时区、persona 那三段、头像。
+   *  接入只抄三件套，剩下的得靠这里补回来。 */
+  function update(id, patch = {}) {
+    const cid = String(id || "").trim();
+    if (!cid || cid.startsWith("_")) throw Object.assign(new Error("内置包不能改"), { status: 403 });
+    const dir = path.join(userRoot, safeId(cid));
+    const profile = readJson(path.join(dir, "profile.json"), null);
+    if (!profile) throw Object.assign(new Error("角色不存在"), { status: 404 });
+
+    if (patch.name != null) profile.name = String(patch.name).trim() || profile.name;
+    if (Array.isArray(patch.aliases)) profile.aliases = patch.aliases.map((x) => String(x).trim()).filter(Boolean);
+    if (patch.timezone) profile.timezone = String(patch.timezone);
+    if (patch.letters && typeof patch.letters === "object") profile.letters = patch.letters;
+
+    const parts = [];
+    const whoT = String(patch.who ?? "").trim();
+    const wantT = String(patch.want ?? "").trim();
+    const needT = String(patch.need ?? "").trim();
+    if (whoT) parts.push("## 是谁\n\n" + whoT);
+    if (wantT || needT) {
+      const lines = [];
+      if (wantT) lines.push("- 最想要的：" + wantT);
+      if (needT) lines.push("- 最怕的：" + needT);
+      parts.push("## 矛盾\n\n" + lines.join("\n"));
+    }
+    if (parts.length) {
+      fs.writeFileSync(path.join(dir, "persona.md"), "# " + profile.name + "\n\n" + parts.join("\n\n") + "\n", "utf8");
+    }
+
+    writeJson(path.join(dir, "profile.json"), profile);
+    if (patch.avatar) {
+      try { saveAvatar(cid, String(patch.avatar)); } catch { /* 图不行就先不忙 */ }
+    }
+    return { ok: true, id: cid, profile };
   }
 
   function importST(card, { id } = {}) {
@@ -388,5 +410,5 @@ export function createCharacters({ appDir, dataDir }) {
     };
   }
 
-  return { list, load, create, remove, saveAvatar, importST, exportST, userRoot, tplRoot };
+  return { list, load, create, update, remove, saveAvatar, importST, exportST, userRoot, tplRoot };
 }

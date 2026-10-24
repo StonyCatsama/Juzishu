@@ -411,8 +411,8 @@
   .idc-bot .bar i{display:block;width:2px;background:rgba(255,255,255,.72)}
   .idc-stamp{position:absolute;right:12px;top:44px;font-family:Georgia,serif;font-size:9px;font-weight:800;color:rgba(174,68,60,.85);border:1.5px solid rgba(174,68,60,.85);padding:2px 5px;transform:rotate(-8deg);letter-spacing:.06em;border-radius:2px}
   /* ── 封签：抽屉里的证件卡 ── */
-  .cardbox{position:absolute;z-index:3;width:466px;height:736px;transform-origin:0 0;display:none;pointer-events:auto;padding:0}
-  .cardbox.on{display:block}
+  .cardbox{position:absolute;z-index:3;width:466px;height:736px;transform-origin:0 0;visibility:hidden;pointer-events:none;padding:0}
+  .cardbox.on{visibility:visible;pointer-events:auto}
   /* 卡盒：每张露 133，后放那张压住前一张的下沿 */
   .cw{position:absolute;left:50px;width:354px;height:223.2px}
   .cw .idcard,.cw .back{transform:scale(0.95676);transform-origin:top left}
@@ -713,7 +713,7 @@
   const MOOD_LEVELS = ["轻","中","重"];
   const HUNGER = ["饱","有点饿","饿"];
   const ENERGY = ["精神","有点乏","累"];
-  const DESIRE = ["不想","一般","想","主动"];
+  // DESIRE 不进发布版（欲望那格整块拆了）
   let AGENTS = [];
   let NAME = { "": "通用" };
   const opts = (arr, cur) => {
@@ -739,7 +739,7 @@
   ];
   const META = {
     book:   { code:"DR-41 · DRAWER · LOG FILE (Oct '26)", title:"抽 屉", sub:"" },
-    state:  { code:"SE-07 · SEAL · LIVE READINGS",        title:"封 签", sub:"三 agent 证件 · 心情 / 饿 / 精力 / 欲望 · 牵挂可增删" },
+    state:  { code:"SE-07 · SEAL · LIVE READINGS",        title:"封 签", sub:"三 agent 证件 · 心情 / 饿 / 精力 · 牵挂可增删" },
     letter: { code:"LT-07 · LETTER · DAILY LOG",          title:"信",    sub:"当天日志单 · 选日期回翻" },
     loc:    { code:"PM-07 · POSTMARK · MAP & TRAIL",      title:"邮 戳", sub:"实况 / 预排 · 今日轨迹" },
     cfg:    { code:"BX-07 · MAILBOX · SETTINGS",          title:"邮 箱", sub:"三档 / 主会话 / 角色" },
@@ -815,8 +815,12 @@
       sw.style.transition = `transform ${dur}ms ${ease}`;
       sw.style.transform = `translateX(${((to - DR_REST) * k).toFixed(1)}px)`;
     }
+    // 卡盒跟纸走同一个位移；但它自己还带一层 scale(k)，两样得一起写。
+    // 否则布局函数一重排就把位移抹了，卡就蹲在原地不动。
     const cb = document.getElementById("cardbox");
     if (cb) {
+      window.__drRest = DR_REST;
+      window.__drX = to;
       cb.style.transition = `transform ${dur}ms ${ease}`;
       cb.style.transform = `translateX(${((to - DR_REST) * k).toFixed(1)}px) scale(${k.toFixed(4)})`;
     }
@@ -972,7 +976,6 @@
           <div class="r"><span class="k">MOOD</span><span class="v">${esc(s.mood || "无")}${(s.moodLevelNow || lv) ? `<s>${esc(s.moodLevelNow || lv)}</s>` : ""}</span></div>
           <div class="r"><span class="k">HUNGER</span><span class="v">${esc(s.hungerNow || s?.body?.hunger || "无")}</span></div>
           <div class="r"><span class="k">ENERGY</span><span class="v">${esc(s?.body?.energy || "无")}</span></div>
-          <div class="r"><span class="k">DESIRE</span><span class="v">${esc(s.desire || "无")}</span></div>
         </div>
         <div class="arcs"></div>
       </div></div>`);
@@ -1052,7 +1055,7 @@
         <div class="txt">${orientTxt}</div>
         <div class="grp-sep"></div>
         <div class="g"><span class="k">心情</span><span>${pick("mood", MOODS, s.mood)}${sep}${pick("moodLevel", MOOD_LEVELS, s.moodLevelNow || s.moodLevel)}</span></div>
-        <div class="g"><span class="k">身体</span><span>${pick("bodyHunger", HUNGER, s.hungerNow || s?.body?.hunger)}${sep}${pick("bodyEnergy", ENERGY, s?.body?.energy)}${sep}${pick("desire", DESIRE, s.desire)}</span></div>
+        <div class="g"><span class="k">身体</span><span>${pick("bodyHunger", HUNGER, s.hungerNow || s?.body?.hunger)}${sep}${pick("bodyEnergy", ENERGY, s?.body?.energy)}</span></div>
         <div class="g"><span class="k">底层</span><span>${underTxt}</span></div>
         <div class="g"><span class="k">特殊</span><span>${sp.length ? esc(sp.join("、")) : "无"}</span></div>
         <div class="sign">—— ${esc(nm)}</div>
@@ -1083,39 +1086,32 @@
     const p = $("sealPaper");
     if (!p) return;
     const isNew = NEWMODE === "new";
-    const pane = isNew ? `
-      <div class="lf"><span class="k">ID</span><input id="nfId" placeholder="英文小写，建好不能改"></div>
+    const isEdit = NEWMODE === "edit";
+    const pane = isEdit ? `
       <div class="lf"><span class="k">名字</span><input id="nfName" placeholder="她叫什么"></div>
       <div class="lf"><span class="k">别称</span><input id="nfAlias" placeholder="用逗号分开，可空"></div>
       <div class="lf"><span class="k">时区</span><span class="tzwrap" id="nfTzW"><span class="tzfield" id="nfTzF">${esc(NEWTZ)} ▾</span><div class="tzlist" id="nfTzL">${TZS.map((t) => `<div class="tzitem${t === NEWTZ ? " now" : ""}" data-tz="${t}">${t}</div>`).join("")}<div class="tzitem custom" data-tz="__custom">自定义…</div></div></span></div>
       <div class="lf"><span class="k">她是谁</span><textarea id="nfWho" placeholder="两三句：名字、身份、底色"></textarea></div>
       <div class="lf"><span class="k">最想要的</span><input id="nfWant" placeholder="她嘴上要的东西"></div>
       <div class="lf"><span class="k">最怕的</span><input id="nfNeed" placeholder="她真正需要、却一直躲着的那件事"></div>
-      <div class="lf"><span class="k">模板</span><span class="lpick"><span class="lopt" data-tpl="guide">金 · 向导</span></span></div>
-      <div class="lf"><span class="k">接入</span><span class="lpick" id="adoptList"><span style="opacity:.5;font-size:10px">读…</span></span></div>
       <div class="lf"><span class="k">照片</span><input id="nfPhoto" type="file" accept="image/*" style="border:0;padding:0"></div>` : `
-      <div class="lf"><span class="k">ST 卡</span><textarea id="nfJson" placeholder='{"spec":"chara_card_v2","data":{...}}'></textarea></div>
-      <div class="lf"><span class="k">文件</span><input id="nfFile" type="file" accept=".json" style="border:0;padding:0"></div>
-      <div class="lf"><span class="k">ID</span><input id="nfImpId" placeholder="留空就自动生成 char-xxx"></div>`;
+      <div class="lf"><span class="k">接入</span><span class="lpick" id="adoptList"><span style="opacity:.5;font-size:10px">读…</span></span></div>
+      <div class="lf" style="border-bottom:0"><span style="font-size:10.5px;opacity:.68;line-height:1.9">上面是 Hana 里已经有、还没接进橘子树的人，点一个就接进来。<br><br>人的创建、角色卡的导入，都在 Hana 那边做——橘子树只管接进门以后的日子。</span></div>`;
 
     p.innerHTML = `<div class="letter">
       <i class="cor tl"></i><i class="cor tr"></i><i class="cor bl"></i><i class="cor br"></i>
       <div class="class">SE-07 · NEW RECORD</div>
       <div class="hr"></div>
       <div class="main">
-        <div class="nm" style="font-size:23px">开 一 张 新 卡</div>
-        <div class="dt">橘子树 · 人物档案 · 建好之后左边就是她的信</div>
-        <div class="ltabs">
-          <div class="ltab${isNew ? " on" : ""}" data-m="new">新建人物</div>
-          <div class="ltab${isNew ? "" : " on"}" data-m="import">导入 ST 卡</div>
-        </div>
+        <div class="nm" style="font-size:23px">${isEdit ? "补 一 补 她" : "接 个 人 进 来"}</div>
+        <div class="dt">${isEdit ? "接入只带了三件套，剩下这几格在这儿补" : "橘子树 · 人归 Hana 建，这儿只负责接进门"}</div>
         ${pane}
       </div>
       <div class="hr"></div>
       <div class="foot" style="margin-top:10px">
         <span class="l">PERSONAL RECORD</span>
         <span class="lcancel" id="ncCancel" style="margin-left:auto">取消</span>
-        <span class="lgo" id="ncGo" style="margin-left:14px">${isNew ? "建" : "导入"}</span>
+        ${isEdit ? `<span class="lgo" id="ncGo" style="margin-left:14px">存</span>` : ""}
       </div>
     </div>`;
 
@@ -1161,15 +1157,19 @@
             body: JSON.stringify({ id }),
           }).catch(() => null);
           if (r?.ok) {
-            toast(`接进来了：${r.name || id}（重开 Hana 后进时钟与注入）`);
             SEAL = null;
             await loadSeal();
+            toast(`接进来了：${r.name || id}，顺手把缺的补上`);
+            openEditForm(id);
+            return;
           } else {
             toast(r?.err || "没接进来");
             el.textContent = id;
           }
         });
       })();
+    } else if (isEdit) {
+      bindTz();
       $("nfPhoto").onchange = () => {
         const f = $("nfPhoto").files[0];
         if (!f) return;
@@ -1177,16 +1177,8 @@
         rd.onload = () => { NEWAVATAR = String(rd.result || ""); toast("照片记住了"); };
         rd.readAsDataURL(f);
       };
-      $("ncGo").onclick = submitNew;
-    } else {
-      $("nfFile").onchange = () => {
-        const f = $("nfFile").files[0];
-        if (!f) return;
-        const rd = new FileReader();
-        rd.onload = () => { $("nfJson").value = String(rd.result || ""); };
-        rd.readAsText(f);
-      };
-      $("ncGo").onclick = submitImport;
+      $("ncGo").onclick = submitEdit;
+      fillEdit(SEALSEL);
     }
   }
 
@@ -1216,57 +1208,65 @@
     });
   }
 
-  async function submitNew() {
-    const id = ($("nfId").value || "").trim().toLowerCase();
-    const name = ($("nfName").value || "").trim();
-    if (!id || !name) { toast("id 和名字都要填"); return; }
+  /** 接入之后回来补：从角色包把现有的值读回表单。 */
+  async function fillEdit(id) {
+    if (!id) return;
+    let d = null;
+    try { d = await apiFetch("/characters/" + encodeURIComponent(id)); } catch { return; }
+    if (!d?.ok) return;
+    const pr = d.profile || {};
+    const persona = String(d.persona || "");
+    const who = (persona.match(/##\s*是谁\s*\n+([\s\S]*?)(?=\n##|$)/) || [])[1] || "";
+    const want = (persona.match(/最想要的：\s*(.+)/) || [])[1] || "";
+    const need = (persona.match(/最怕的：\s*(.+)/) || [])[1] || "";
+    if ($("nfName")) $("nfName").value = pr.name || "";
+    if ($("nfAlias")) $("nfAlias").value = (pr.aliases || []).join("，");
+    NEWTZ = pr.timezone || "Asia/Shanghai";
+    if ($("nfTzF")) $("nfTzF").textContent = NEWTZ + " ▾";
+    if ($("nfWho")) $("nfWho").value = String(who).trim();
+    if ($("nfWant")) $("nfWant").value = String(want).trim();
+    if ($("nfNeed")) $("nfNeed").value = String(need).trim();
+  }
+
+  /** 存回去：名字、别称、时区、persona 三段、头像。 */
+  async function submitEdit() {
+    const id = SEALSEL;
+    if (!id) { toast("先选一张卡"); return; }
     const body = {
-      id, name,
-      aliases: ($("nfAlias").value || "").split(/[,，、]/).map((x) => x.trim()).filter(Boolean),
+      id,
+      name: ($("nfName")?.value || "").trim(),
+      aliases: ($("nfAlias")?.value || "").split(/[,，、]/).map((x) => x.trim()).filter(Boolean),
       timezone: NEWTZ,
-      who: ($("nfWho").value || "").trim(),
-      want: ($("nfWant").value || "").trim(),
-      need: ($("nfNeed").value || "").trim(),
+      who: ($("nfWho")?.value || "").trim(),
+      want: ($("nfWant")?.value || "").trim(),
+      need: ($("nfNeed")?.value || "").trim(),
     };
-    if (NEWTPL) body.from = NEWTPL;
     if (NEWAVATAR) body.avatar = NEWAVATAR;
     try {
-      const r = await apiFetch("/characters/create", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (!r?.ok) { toast(r?.err || "没建成"); return; }
-      delete AVCACHE[r.id];
-      // 包建好了，接着把 agent 也建出来
-      let agentMsg = "";
-      try {
-        const ra = await apiFetch("/characters/" + encodeURIComponent(r.id) + "/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ yuan: "hanako" }) });
-        agentMsg = ra?.ok ? (ra.warning ? `，${ra.warning}` : "，agent 也建好了") : `，agent 没建成：${ra?.err || "?"}`;
-      } catch (e) { agentMsg = "，agent 没建成"; }
-      toast("建好了：" + name + agentMsg + "（重开 Hana 后才会跑时钟与注入）");
-      SEAL = null;
-      SEALSEL = r.id;
+      const r = await apiFetch("/characters/update", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!r?.ok) { toast(r?.err || "没存上"); return; }
+      toast("存好了");
       NEWAVATAR = "";
+      delete AVCACHE[id];
+      SEAL = null;
       await loadSeal();
+      renderLetter();
     } catch { toast("请求失败"); }
   }
 
-  async function submitImport() {
-    let card;
-    try { card = JSON.parse($("nfJson").value || ""); } catch { toast("JSON 读不出来"); return; }
-    const id = ($("nfImpId").value || "").trim().toLowerCase();
-    try {
-      const r = await apiFetch("/characters/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ card, id: id || undefined }) });
-      if (!r?.ok) { toast(r?.err || "没导入"); return; }
-      // 导入和新建一样，包建好了就得把 agent 也建出来——不然卡只是个文件夹
-      let agentMsg = "";
-      try {
-        const ra = await apiFetch("/characters/" + encodeURIComponent(r.id) + "/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ yuan: "hanako" }) });
-        agentMsg = ra?.ok ? (ra.warning ? `，${ra.warning}` : "，agent 也建好了") : `，agent 没建成：${ra?.err || "?"}`;
-      } catch (e) { agentMsg = "，agent 没建成"; }
-      toast("导入 " + (r.name || "") + "，抽屉 " + (r.entries || 0) + " 条" + agentMsg);
-      SEAL = null;
-      SEALSEL = r.id || SEALSEL;
-      await loadSeal();
-    } catch { toast("请求失败"); }
+  function openEditForm(id) {
+    if (!id) return;
+    SEALSEL = id;
+    NEWMODE = "edit";
+    NEWAVATAR = "";
+    renderNewForm();
   }
+
+  $("cardbox").addEventListener("dblclick", (e) => {
+    const c = e.target.closest(".idcard");
+    if (!c) return;
+    openEditForm(c.dataset.a);
+  });
 
   $("cardbox").addEventListener("click", (e) => {
     if (e.target.closest("#newChar")) { openNewForm(); return; }
@@ -2724,7 +2724,10 @@
       if (cb) {
         cb.style.left = ((1153 + dx) * k).toFixed(1) + "px";
         cb.style.top = (96 * k).toFixed(1) + "px";
-        cb.style.transform = "scale(" + k.toFixed(4) + ")";
+        // 重排时不能把抽屉的位移抹掉——拼回去，连同它自己的缩放
+        const rest = window.__drRest ?? -40;
+        const drx = ((window.__drX ?? rest) - rest) * k;
+        cb.style.transform = "translateX(" + drx.toFixed(1) + "px) scale(" + k.toFixed(4) + ")";
       }
       // 内容：在纸里面，让开左边那排螺旋
       book.style.left   = (51 * k).toFixed(1) + "px";

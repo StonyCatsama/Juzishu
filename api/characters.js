@@ -23,6 +23,17 @@ export function registerCharacterRoutes(app, { store, sdk, onCreated, onRemoved 
     }
   });
 
+  app.post("/characters/update", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const r = store.update(body.id, body);
+      // 改了名字/时区，配置里那份也得跟上，不然时钟还按老的跑
+      try { await onCreated?.(r.id); } catch { /* 写配置失败不拦改名 */ }
+      return c.json(r);
+    } catch (e) {
+      return c.json({ ok: false, err: String(e?.message || e) }, e?.status || 500);
+    }
+  });
   // 建完包，接着把 agent 也建出来——不然卡只是个文件夹
   app.post("/characters/:id/agent", async (c) => {
     const id = String(c.req.param("id") || "");

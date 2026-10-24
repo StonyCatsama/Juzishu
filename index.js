@@ -104,36 +104,7 @@ export default defineApp(async (sdk) => {
   const suggestionStore = createSuggestionStore({ dataDir });
   const talkStore = createTalkStore({ dataDir });
 
-  // 首次启动：配置里一个角色都没有，就照示例铺一份，别让人对着空白
-  if (!cfg.characters.length) {
-    try {
-      const fs = await import("node:fs");
-      const exProfilePath = pathMod.join(__APP_DIR, "characters", "_example", "profile.json");
-      if (fs.existsSync(exProfilePath)) {
-        const ex = JSON.parse(fs.readFileSync(exProfilePath, "utf8"));
-        characterStore.create({ id: "example", name: ex.name || "小橘", from: "_example" });
-        cfg = {
-          ...cfg,
-          characters: [
-            {
-              id: "example",
-              name: ex.name || "小橘",
-              timezone: ex.timezone || "Asia/Shanghai",
-              tzOffset: ODAY_TZ[id] || 0,
-              ...(dataDir
-                ? {
-                    lettersDir: pathMod.join(dataDir, "letters", "example"),
-                    promptsDir: pathMod.join(dataDir, "characters", "example", "letters"),
-                  }
-                : {}),
-              slots: (ex.letters?.slots || []).map((s) => ({ id: s.id, at: s.at })),
-            },
-          ],
-        };
-        saveConfig({ dataDir, cfg });
-      }
-    } catch { /* 铺不出来也别拦启动 */ }
-  }
+  // 首次启动不自动铺角色：人由 Hana 建，橘子树只接（见 api/agents.js）
 
   // 数据目录里有角色包、但配置里没有的：自动补一条（以前手动放进去的角色信页/时钟都不认）。
   try {
@@ -470,7 +441,7 @@ export default defineApp(async (sdk) => {
     }
   }
 
-  /** 把一条跨角色消息投进对方主会话：带「某人带话」标记，display:false，不冒充主人说话。 */
+  /** 把一条跨角色消息投进对方主会话：带「某人带话」标记，display:false，不冒充用户说话。 */
   async function deliverTalk(from, to, text) {
     const ch = (cfg.characters || []).find((c) => c.id === to);
     const addr = String(ch?.mainSession || "").trim();
@@ -785,6 +756,11 @@ export default defineApp(async (sdk) => {
       const agentId = m ? m[1] : null;
       if (!agentId) return undefined;
 
+      // 只注自己名册里的人。同一个宿主装了两个橘子树、或者别的 App 也想注入时，
+      // 谁的人谁注——抢了就会把别人的状态和人格锢挡在门外。
+      const roster = Array.isArray(cfg.characters) ? cfg.characters : [];
+      if (roster.length && !roster.some((c) => c && c.id === agentId)) return undefined;
+
       // 上一句她自己说的 / 再上一句他说的（回望用）
       let prevAssistant = null;
       let prevUser = "";
@@ -983,7 +959,7 @@ export default defineApp(async (sdk) => {
       name: "state_write",
       description:
         HOW_TO_CALL_HEAD +
-        "写自己的状态读数（心情/牵挂/身体/欲望/位置/钱）。她自己在动作里写真值；只传要改的格。\n" +
+        "写自己的状态读数（心情/牵挂/身体/位置/钱）。她自己在动作里写真值；只传要改的格。\n" +
         HOW_TO_CALL,
       parameters: {
         type: "object",
@@ -995,7 +971,6 @@ export default defineApp(async (sdk) => {
           moodUnderLevel: { type: "string", description: "暗格的深浅：轻/中/重；不传默认轻" },
           bodyHunger: { type: "string", description: "饿：饱/有点饿/饿" },
           bodyEnergy: { type: "string", description: "精力：精神/有点乏/累" },
-          desire: { type: "string", description: "欲望：不想/一般/想/主动" },
           careAdd: { type: "object", description: "起一个牵挂结 {with, about, weight(1-3)}；上限 3 条。心里真的挂着谁、什么事没落下来就起一格；weight 只是轻重，不是上屏的门槛" },
           careResolve: { type: "string", description: "解一个牵挂结（给关键词）" },
           place: { type: "string", description: "此刻在哪：填地点名" },
@@ -1011,37 +986,7 @@ export default defineApp(async (sdk) => {
         const before = await sealStore.read(id);
         const r = await sealStore.write(id, input || {}, "tool");
 
-        // 亲密结束的收尾：欲望从“想做”落回去 → 隐一条提醒，让她自己补总览
-        try {
-          const HIGH = ["想", "主动"];
-          const LOW = ["不想", "一般"];
-          const was = String(before?.desire || "");
-          const now2 = String(r?.status?.desire || "");
-          if (r.ok && HIGH.includes(was) && LOW.includes(now2)) {
-            const target = exec?.context?.sessionPath
-              || (CLOCK_CHARS.find((c) => c.id === id) || {}).mainSession
-              || "";
-            const text = [
-              "（刚才那场结束了。）",
-              "两条总览要不要补？",
-              "· 「亲密」：新的一处，接在时间线最后那条后面——用 `drawer_patch` 的 `after` 指住那条已有的记录，别让它跑到正文末尾。",
-              "· 「氛围」：先看「做过的」那一行——这一回是哪种、第几回。次数往上算，熟度跟着换词：一回两回是生，三四回有一点熟，五回往上就写熟悉。只把数字加一、熟度不动，等于没记。",
-              "顺手记一句当次的经过，第一人称，别写成品评。不想补就不补。",
-            ].join("\n");
-            if (target) {
-              const pr = sdk.sessions.sendCustom({
-                ...(String(target).startsWith("sess_") ? { sessionId: String(target) } : { sessionPath: String(target) }),
-                scope: "all",
-                content: text,
-                customType: "juzishu.after",
-                display: false,
-                triggerTurn: true,
-              });
-              pr.catch(() => {});
-              await sdk.logger?.info?.(`[after] ${id} 亲密收尾提醒 -> ${target}`);
-            }
-          }
-        } catch { /* 提醒失败不影响写入 */ }
+        // （发布版不带收尾提醒：属于本机自用）
 
         return {
           content: [
@@ -1056,7 +1001,7 @@ export default defineApp(async (sdk) => {
       name: "state_read",
       description:
         HOW_TO_CALL_HEAD +
-        "读自己的状态读数（心情/牵挂/身体/欲望/特殊状态/位置）。\n" +
+        "读自己的状态读数（心情/牵挂/身体/特殊状态/位置）。\n" +
         HOW_TO_CALL,
       parameters: {
         type: "object",
@@ -1234,7 +1179,7 @@ export default defineApp(async (sdk) => {
         type: "object",
         properties: {
           agentId: { type: "string", description: "哪个人身上的条目" },
-          name: { type: "string", description: "条目名（总览名，如 熟度 / 亲密 / 礼物）" },
+          name: { type: "string", description: "条目名（总览名，如 礼物 / 约定 / 常去的地方）" },
           text: { type: "string", description: "要写进去的内容；不传就是只读" },
           after: { type: "string", description: "插在这行后面（给正文里现成的一小段就行）；不传就追加到末尾" },
           full: { type: "boolean", description: "true = 用 text 把整段正文换掉" },
@@ -1288,7 +1233,7 @@ export default defineApp(async (sdk) => {
         "改写抽屉里某一条的正文——把写歪的句子改正、把第三人称改成第一人称。\n" +
         "**只改这一条的正文**：不动触发词、不动优先级、不动父子关系。\n" +
         "**不传 body 就是只读**：先拿到现在的正文，改完再把整段新正文传进来（不是只传改的那一句）。\n" +
-        "第一人称的尺度：自己的事写「我」，另外两个人还叫姐姐／妹妹／主人；不写自己的名字。\n" +
+        "第一人称的尺度：自己的事写「我」，对方写「他」或「她」；不写自己的名字。\n" +
         HOW_TO_CALL,
       parameters: {
         type: "object",
@@ -1412,14 +1357,14 @@ export default defineApp(async (sdk) => {
         "**提之前先用 `today_talk` 把当天会话过一遍**——别凭印象想今天发生了什么。\n\n" +
         "**三条判据，中一条才能提**：\n" +
         "① 越界／确认：关系比上次更近了（认了件事、应下了什么）；\n" +
-        "② 首现／定名：新场景、新地点、新东西、新名字第一次出现（老铁桥、那把琴、一条围巾）；\n" +
+        "② 首现／定名：新场景、新地点、新东西、新名字第一次出现（那座桥、那本书、一把伞）；\n" +
         "③ 复用符号：以后会反复引的物件、暗号、约定。\n" +
-        "特别：亲密、约会每次都值得留。\n\n" +
+        "特别：两个人第一次一起做的事，每次都值得留。\n\n" +
         "**不要提**：一次性的经过（谁几点做了啥）、过程与纠正、当天当时的小事。\n\n" +
         "写法：\n" +
         "- name 用名词（容器名或那场那物）；\n" +
-        "- trigger 只写名词、宁窄勿宽（写“餐桌”，不写“从心的说”）；\n" +
-        "- **body 一律第一人称**：写「我」写「他」，不写自己的名字——\"他递过来一条米白色的围巾，我伸手接了\"，不是\"<角色名>收到他的围巾\"；\n" +
+        "- trigger 只写名词、宁窄勿宽（写“面馆”，不写“从心的说”）；\n" +
+        "- **body 一律第一人称**：写「我」写「他」，不写自己的名字——\"他递过来一个纸袋，里头是那本书，我伸手接了\"，不是\"<角色名>收到了他的书\"；\n" +
         "- body 自足、直白、写实，不写“见细节X”、不写解释；\n" +
         "- why 一句话说清中了哪条判据。\n\n" +
         "完整规则在 App 目录下的 `rules\\世界书筛选与写入.md`，拿不准就读它。",
@@ -1430,7 +1375,7 @@ export default defineApp(async (sdk) => {
           name: { type: "string", description: "条目名（名词，短）" },
           trigger: { type: "array", items: { type: "string" }, description: "触发词，只写名词；空数组 = 常驻" },
           body: { type: "string", description: "正文：自足、直白、写实，不写解释、不写“见细节”" },
-          why: { type: "string", description: "为什值得收：中了哪条判据（越界/首现/复用/亲密约会），一句" },
+          why: { type: "string", description: "为什值得收：中了哪条判据（越界/首现/复用），一句" },
         },
         required: ["agentId", "name", "body", "why"],
       },
@@ -1574,6 +1519,72 @@ export default defineApp(async (sdk) => {
             }
           }
         } catch { /* 灌不进去不影响建卡 */ }
+
+        // ── 接入之后给她一套能用的底子 ──
+        // 刚接进来的人：抽屉是空的、state 里也没有这个人。
+        // 于是注入里只剩时间和回望——没有“你是谁”，也没有规则。这里一次性补上。
+        try {
+          const fsMod = await import("node:fs");
+          // 1) 状态空壳：给她一个能写的地方（七格留空，不替她编）
+          if (dataDir) {
+            const sp = pathMod.join(dataDir, "state", `${id}.json`);
+            if (!fsMod.existsSync(sp)) {
+              fsMod.mkdirSync(pathMod.dirname(sp), { recursive: true });
+              fsMod.writeFileSync(
+                sp,
+                JSON.stringify(
+                  {
+                    mood: "", moodLevel: "", moodUnder: null, care: [],
+                    body: { hunger: "", energy: "" }, special: [],
+                    money: "", place: null,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  null, 2
+                ),
+                "utf8"
+              );
+            }
+          }
+          // 2) 抽屉里补一条人格锚（恒注入）。
+          //    只放“你是谁”这一句，不搬人格正文——那是给人自己改的。
+          const existing = (await drawerStore.list()) || [];
+          const mine = existing.filter((x) => x && x.agentId === id);
+          const hasAnchor = mine.some(
+            (x) => x.name === "人格锚" || (Array.isArray(x.trigger) && x.trigger.length === 0 && x.enabled !== false)
+          );
+          const nm = String(d.profile?.name || id);
+          const isTpl = (t) => {
+            const s = String(t || "").trim();
+            return !s || s.includes("{{userName}}") || /^#\s*角色名\s*$/m.test(s);
+          };
+          // identity 真实就用它；是模板/空的话，只给一句最普通的身份
+          const body = isTpl(d.identity) ? [`# ${nm}`, "", `- 你是 ${nm}。`].join("\n") : String(d.identity).trim().slice(0, 2000);
+          if (!hasAnchor) {
+            await drawerStore.create({
+              agentId: id,
+              name: "人格锚",
+              trigger: [],
+              body,
+              priority: 100,
+              match: "substring",
+              logic: "any",
+            });
+          } else {
+            // 已经有了但内容是模板/空话，换成这一句
+            const row = mine.find((x) => x.name === "人格锚");
+            if (row && isTpl(row.body)) {
+              try { await drawerStore.upsert(row.id, { body }); } catch { /* 改不了不拦 */ }
+            }
+          }
+          // 状态提醒不进抽屉：它跟着 stateBlock 在末端注入里出（配置里的 hint）。
+          // 抽屉只放人格锚——两种东西别混在一起。
+          // 3) 回望绑定：名单空着就是全部（不用管）；名单写了人，就把她加进去
+          const rc = cfg.defaults?.recall;
+          if (rc && Array.isArray(rc.agents) && rc.agents.length && !rc.agents.includes(id)) {
+            rc.agents.push(id);
+            saveConfig({ dataDir, cfg });
+          }
+        } catch { /* 补不齐也不拦建卡 */ }
       } catch { /* 写不回配置不拦建卡 */ }
     };
     const onCharacterRemoved = async (id) => {

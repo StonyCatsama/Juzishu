@@ -1,0 +1,28 @@
+# 本机数据，永不上传
+config.json
+config.bak*.json
+data/
+*.db
+*.db-journal
+
+# 构建产物
+dist/
+dist-release/
+node_modules/
+
+# 备份与残件
+_backup/
+*.broken-*
+*.bak
+*.tmp
+
+# 私有词表与测试产物（只在本机开发目录存在）
+scripts/private-words.txt
+scripts/*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

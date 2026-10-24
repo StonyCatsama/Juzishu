@@ -30,13 +30,19 @@ export function stripPulse(s) {
   return String(s || "").replace(PULSE_RE, "").trim();
 }
 
-/** 取她真说的语言：剥思考、剥括号动作、剥方括号；过长夹头尾。 */
+/** 取她真说的语言：剥思考、剥括号旁白、过长夹头尾。
+ *  括号不能无差别砍：代码、正则、表格里的括号也是括号。
+ *  只有“纯旁白”（里面没有代码符号）才剥掉，其余原样留着。 */
 export function clipRecallText(prevAssistant, clip = RECALL_DEFAULTS.clip) {
   let s = stripPulse(prevAssistant) || String(prevAssistant || "");
+  // 整句里有代码痕迹就一个括号也不剥：正则、代码块、表格里的括号本来就是正文。
+  // 扣“（动作）”只对聊天的那几句有意义。
+  const looksCode =
+    /`|\{|\}|<\/?[a-zA-Z]|\|[ \t]*-{2,}|\/\^|\\[sSdDwWbB]|\$\{/.test(s) || /^[ \t]*[|>]|\|[ \t]*$/m.test(s);
+  if (!looksCode) {
+    s = s.replace(/（([^（）]*)）|\(([^()]*)\)|\[([^\[\]]*)\]/g, "");
+  }
   s = s
-    .replace(/（[^）]*）/g, "")
-    .replace(/\([^)]*\)/g, "")
-    .replace(/\[[^\]]*\]/g, "")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{2,}/g, "\n")
     .trim();

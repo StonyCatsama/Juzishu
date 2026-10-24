@@ -234,7 +234,10 @@ export default defineApp(async (sdk) => {
         ? `【时钟】今天的收尾时间到了（定的 ${slot.at}，这一次 ${rec?.atText || ""}）。` +
           `这一档不写日子，只过一遍今天的话。按下面这份要求做，不用先跟我说话。\n\n`
         : `【时钟】现在是你今天的${SLOT_NAME[slot.id] || slot.id}（定的 ${slot.at}，这一次 ${rec?.atText || ""}）。` +
-          `按下面这份要求写，不用先跟我说话。\n\n`);
+          `按下面这份要求写，不用先跟我说话。\n\n`) +
+      // 工具是延迟加载的，不先查就看不见；只把话写出来而不调用工具，信文件一个字都不会变。
+      `**写完之后必须落盘**：先用 \`tool_search\` 查 \`letter_write\`，再用它把这一档的整段正文写进去。` +
+      `只在对话里说出来不算——信文件不会自己变。\n\n`;
 
     const sessionPath = await ensureSession(ch);
     if (!sessionPath) {
@@ -259,7 +262,7 @@ export default defineApp(async (sdk) => {
       ]);
 
       if (ack === "sent") await sdk.logger?.info?.(`[clock] sent ${ch.id}/${slot.id} -> ${sessionPath}`);
-      else if (ack === "dispatched") await sdk.logger?.info?.(`[clock] dispatched ${ch.id}/${slot.id} (no ack in 2.5s) -> ${sessionPath}`);
+      else if (ack === "dispatched") await sdk.logger?.info?.(`[clock] dispatched ${ch.id}/${slot.id} (已投递，回执慢于 2.5s，不是失败) -> ${sessionPath}`);
       else await sdk.logger?.warn?.(`[clock] send failed ${ch.id}/${slot.id}: ${ack}`);
       return { ok: true, outcome: ack, sessionPath };
     } catch (e) {
@@ -732,34 +735,72 @@ export default defineApp(async (sdk) => {
     return { ...RECALL_DEFAULTS, ...(cfg.defaults?.recall || {}) };
   }
 
+  /** 每一条提前返回都留一行日志：不然「注入没发生」永远查不出卡在哪。 */
+  async function skip(reason, agentId, extra) {
+    try {
+      await sdk.logger?.info?.(`[inject] skip reason=${reason}` + (agentId ? ` agent=${agentId}` : "") + (extra ? ` (${extra})` : ""));
+    } catch { /* 日志失败不影响主流程 */ }
+    return undefined;
+  }
+
   async function onProviderRequest(inv) {
     try {
       const payload = inv?.payload;
-      const arr = payload?.messages;
-      if (!Array.isArray(arr) || !arr.length) return undefined;
+      // payload 的契约是 unknown：宿主原样透传上层请求体。两套主流形状都得认：
+      //   · Chat Completions  → { messages: [...] }
+      //   · Responses API     → { input: [...] } 或 { input: "一段字符串" }
+      // 只认 messages 的话，走 Responses 的 provider 永远读不到（真实踩过）。
+      let body = payload;
+      if (typeof body === "string") {
+        try { body = JSON.parse(body); } catch { /* 真不是 JSON 就算了 */ }
+      }
+      let arr = null;
+      let inputMode = null; // null=不需要回写；"array"/"string"=要写回 payload.input
+      if (body && Array.isArray(body.messages)) {
+        arr = body.messages;
+      } else if (body && body.request && Array.isArray(body.request.messages)) {
+        arr = body.request.messages;
+      } else if (body && Array.isArray(body.input)) {
+        arr = body.input;
+        inputMode = "array";
+      } else if (body && typeof body.input === "string") {
+        // 字符串形态：先当成一条 user 消息处理，注入完再写回成数组
+        arr = [{ role: "user", content: body.input }];
+        inputMode = "string";
+      }
+      if (!arr || !arr.length) {
+        const shape =
+          payload == null
+            ? String(payload)
+            : typeof payload === "object"
+              ? "keys=" + Object.keys(payload).slice(0, 12).join(",")
+              : typeof payload + ":" + String(payload).slice(0, 60);
+        return await skip("no-messages", null, shape);
+      }
 
       let idx = -1;
       for (let i = arr.length - 1; i >= 0; i--) {
         if (arr[i]?.role === "user") { idx = i; break; }
       }
-      if (idx < 0) return undefined;
+      if (idx < 0) return await skip("no-user-turn", null);
 
       const msg = arr[idx];
       const text = textOf(msg?.content);
 
       // 已经注过就不重复
-      if (text.includes(anchor())) return undefined;
+      if (text.includes(anchor())) return await skip("already-anchored", null);
 
       const sessionPath = String(inv?.session?.sessionPath || "");
       const sessionId = String(inv?.session?.sessionId || "");
       const m = sessionPath.match(/[\\/]agents[\\/]([^\\/]+)[\\/]/);
       const agentId = m ? m[1] : null;
-      if (!agentId) return undefined;
+      if (!agentId) return await skip("no-agent-in-session-path", null, sessionPath);
 
       // 只注自己名册里的人。同一个宿主装了两个橘子树、或者别的 App 也想注入时，
       // 谁的人谁注——抢了就会把别人的状态和人格锢挡在门外。
       const roster = Array.isArray(cfg.characters) ? cfg.characters : [];
-      if (roster.length && !roster.some((c) => c && c.id === agentId)) return undefined;
+      if (roster.length && !roster.some((c) => c && c.id === agentId))
+        return await skip("not-in-roster", agentId, `roster=[${roster.map((c) => c && c.id).join(",")}]`);
 
       // 上一句她自己说的 / 再上一句他说的（回望用）
       let prevAssistant = null;
@@ -810,12 +851,12 @@ export default defineApp(async (sdk) => {
       // 工程会话：只留一句工程锚（如果配了），人格锚/时间/基线/回望全不注
       if (isWork) {
         const anchorText = String(cfg.defaults?.work?.anchors?.[agentId] || "").trim();
-        if (!anchorText) return undefined;
+        if (!anchorText) return await skip("work-no-anchor", agentId);
         const block = { type: "text", text: "\n\n" + anchor() + "\n" + anchorText };
         if (Array.isArray(msg.content)) msg.content = [...msg.content, block];
         else if (typeof msg.content === "string") msg.content = [{ type: "text", text: msg.content }, block];
         else msg.content = [block];
-        await sdk.logger?.info?.(`[inject] mode=${INJECT_MODE} agent=${agentId} work=1 parts=工程锚`);
+        await sdk.logger?.info?.(`[inject] mode=${INJECT_MODE} agent=${agentId} work=1 parts=work-anchor chars=${anchorText.length}`);
         return { payload };
       }
 
@@ -865,18 +906,25 @@ export default defineApp(async (sdk) => {
         recall,
         maxChars: Number(cfg.defaults?.inject?.maxChars) || 4000,
       });
-      if (!p.text) return undefined;
+      if (!p.text) return await skip("empty-preview", agentId, `parts=${p.parts.length}`);
 
       await sdk.logger?.info?.(
-        `[inject] mode=${INJECT_MODE} agent=${agentId} chars=${p.chars} parts=${p.parts.map((x) => x.name).join(",")}`
+        `[inject] mode=${INJECT_MODE} agent=${agentId} chars=${p.chars} parts=${p.parts.map((x) => x.key || "?").join(",")}`
       );
 
       if (INJECT_MODE !== "takeover") return undefined;
 
-      const block = { type: "text", text: "\n\n" + p.text };
+      // Responses API 的 content item 用 input_text；Chat Completions 用 text。
+      const blockType = inputMode ? "input_text" : "text";
+      const block = { type: blockType, text: "\n\n" + p.text };
       if (Array.isArray(msg.content)) msg.content = [...msg.content, block];
-      else if (typeof msg.content === "string") msg.content = [{ type: "text", text: msg.content }, block];
+      else if (typeof msg.content === "string") msg.content = [{ type: blockType, text: msg.content }, block];
       else msg.content = [block];
+
+      // 字符串形态的 input 被我们转成了一条消息数组，得写回去，否则等于没注
+      if (inputMode === "string" && body && typeof body.input === "string") {
+        body.input = arr;
+      }
 
       return { payload };
     } catch (e) {
@@ -926,7 +974,8 @@ export default defineApp(async (sdk) => {
     if (!dir) return null;
     const t = await readText(pathMod.join(dir, `${date}.md`));
     if (!t) return null;
-    const m = t.match(/^>\s*今日心绪[：:]\s*(.+)$/m);
+    // [ \t]* 而不是 \s*：\s 会跨行，心绪空着时 .+ 就把下一行（## 天气）抓走了
+    const m = t.match(/^>[ \t]*今日心绪[：:][ \t]*(\S.+)$/m);
     return m ? m[1].trim() : null;
   };
 
@@ -1505,8 +1554,13 @@ export default defineApp(async (sdk) => {
           const wbp = pathMod.join(dataDir, "characters", id, "worldbook.json");
           if (fsWB.existsSync(wbp)) {
             const wb = JSON.parse(fsWB.readFileSync(wbp, "utf8"));
+            // 接入可以反复点：同名条目已经在了就跳过，不然每接一次追加一遍
+            const already = new Set(
+              ((await drawerStore.list()) || []).filter((x) => x && x.agentId === id).map((x) => String(x.name))
+            );
             for (const e of (Array.isArray(wb?.entries) ? wb.entries : [])) {
               if (!e || !e.name) continue;
+              if (already.has(String(e.name))) continue;
               await drawerStore.create({
                 agentId: id,
                 name: String(e.name),
@@ -1515,7 +1569,9 @@ export default defineApp(async (sdk) => {
                 priority: Number(e.priority) || 50,
                 match: String(e.match || "substring"),
                 logic: String(e.logic || "any"),
+                enabled: e.enabled !== false,
               });
+              already.add(String(e.name));
             }
           }
         } catch { /* 灌不进去不影响建卡 */ }

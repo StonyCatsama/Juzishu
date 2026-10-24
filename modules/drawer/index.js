@@ -200,7 +200,7 @@ export function createWorldbookStore({ sdk, home, dataDir }) {
         String(entry.logic || "any"),
         "[]",
         String(entry.body || ""),
-        1,
+        entry.enabled === false ? 0 : 1,
         "",
         "native",
         now,

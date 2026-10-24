@@ -79,17 +79,17 @@ export function buildPreview({ entries, text, timeBlock: tb, stateBlock: sb, rec
   const parts = [];
   let used = 0;
 
-  if (sb) { parts.push({ name: "基线", body: sb, system: true }); used += sb.length; }
-  if (tb) { parts.push({ name: "时间", body: tb, system: true }); used += tb.length; }
+  if (sb) { parts.push({ name: "基线", key: "baseline", body: sb, system: true }); used += sb.length; }
+  if (tb) { parts.push({ name: "时间", key: "time", body: tb, system: true }); used += tb.length; }
 
   for (const h of hits) {
     if (used + h.body.length > maxChars) continue;
-    parts.push({ name: `抽屉·${h.name}`, body: h.body, system: false, priority: h.priority });
+    parts.push({ name: `抽屉·${h.name}`, key: "drawer", body: h.body, system: false, priority: h.priority });
     used += h.body.length;
   }
 
   if (recall) {
-    parts.push({ name: "回望", body: recall, system: true });
+    parts.push({ name: "回望", key: "recall", body: recall, system: true });
     used += recall.length;
   }
 
@@ -99,6 +99,7 @@ export function buildPreview({ entries, text, timeBlock: tb, stateBlock: sb, rec
     chars: body.length,
     parts: parts.map((p) => ({
       name: p.name,
+      key: p.key || "",
       system: !!p.system,
       priority: p.priority ?? null,
       chars: p.body.length,
@@ -147,7 +148,9 @@ export function stateBlock(s, opt = {}) {
   let mood = "";
   const word = opt.mood !== undefined ? opt.mood : s.mood;
   if (word) {
-    const lv = opt.mood !== undefined ? "" : (s.moodLevelNow || s.moodNow || s.moodLevel || "");
+    const lv = (opt.mood === undefined || String(opt.mood) === String(s.mood || ""))
+      ? (s.moodLevelNow || s.moodNow || s.moodLevel || "")
+      : "";
     // 程度得说清楚：看注入的人不一定知道“重”是什么样
     const gloss = { 轻: "只带在脸色上，嘴上还是平常的样子", 中: "已经在动作里了，掩不住", 重: "压过眼下正在做的事，话会短、会走神" }[lv];
     mood = `心情：${word}${lv ? `（${lv}：你的心情${gloss}）` : ""}`;

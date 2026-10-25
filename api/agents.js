@@ -90,8 +90,9 @@ export function registerAgentAdoptRoutes(app, { sdk, home, characterStore, onCre
           copied.push("identity.md");
         } catch { /* 写不进去就留着模板 */ }
       }
-      try { await onCreated?.(id); } catch { /* 写配置失败不拦接入 */ }
-      return c.json({ ok: true, id, name, dir: created.dir, copied });
+      let meta = null;
+      try { meta = await onCreated?.(id); } catch { /* 写配置失败不拦接入 */ }
+      return c.json({ ok: true, id, name, dir: created.dir, copied, mainSession: String(meta?.mainSession || "") });
     } catch (e) {
       return c.json({ ok: false, err: String(e?.message || e) }, e?.status || 500);
     }

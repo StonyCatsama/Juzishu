@@ -1159,7 +1159,9 @@
           if (r?.ok) {
             SEAL = null;
             await loadSeal();
-            toast(`接进来了：${r.name || id}，顺手把缺的补上`);
+            // 角色表是启动时读的：不说这句，人会以为接完就在跑了。
+            const bound = r.mainSession ? "主会话已绑一条，配置页能改。" : "还没绑主会话，去配置页填一个，三档才会派信。";
+            toast(`接进来了：${r.name || id}。${bound}重开 Hana 后才进时钟与注入。`);
             openEditForm(id);
             return;
           } else {
@@ -1926,7 +1928,7 @@
         <input data-k="name" value="${esc(c.name || "")}">
         <input data-k="lettersDir" value="${esc(c.lettersDir || "")}" placeholder="信从哪读">
         <input data-k="slots" value="${esc((c.slots || []).map((s) => s.at).join(" / "))}" placeholder="07:00 / 12:00 / 18:00 / 23:00">
-        <input data-k="mainSession" list="ms-${i}" value="${esc(c.mainSession || "")}" placeholder="填 sess_xxx">
+        <input data-k="mainSession" list="ms-${i}" value="${esc(c.mainSession || "")}" placeholder="sess_xxx；空着会自己绑最近的">
         <datalist id="ms-${i}"></datalist>
       </div>`).join("")}
       <div class="cfg-actions"><button class="role-btn" id="cfgSave">保存</button></div>

@@ -36,8 +36,6 @@
     "inject": {
       "maxChars": 4000
     },
-    "talk": {
-      "requireConfirm": true
-    }
+    "realMode": false
   }
 }

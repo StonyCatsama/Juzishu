@@ -104,6 +104,97 @@ export default defineApp(async (sdk) => {
   const suggestionStore = createSuggestionStore({ dataDir });
   const talkStore = createTalkStore({ dataDir });
 
+  // —— 跳角色递话的出口队列 ——
+  // 为什么不直接 sendCustom：写入对方会话要宿主切 agent、重建她那边的上下文，
+  // 那条 RPC 常卡到 30 秒；工具结果送不回去，宿主就判超时、跟她说“失败”，
+  // 她以为没发成又递一遍，对方就收到好几份。
+  // 现在工具只往队列里写一行就返回，真正发送交给后台泵：一次一条，对方闲着才递。
+  const OUTBOX = dataDir ? pathMod.join(dataDir, "outbox.json") : "";
+  const OUTBOX_TTL_MIN = 10;
+  const outboxRead = async () => {
+    if (!OUTBOX) return [];
+    try {
+      const fs = await import("node:fs");
+      const v = JSON.parse(fs.readFileSync(OUTBOX, "utf8"));
+      return Array.isArray(v) ? v : [];
+    } catch { return []; }
+  };
+  const outboxWrite = async (list) => {
+    if (!OUTBOX) return;
+    try {
+      const fs = await import("node:fs");
+      fs.writeFileSync(OUTBOX, JSON.stringify(list, null, 2), "utf8");
+    } catch (e) { await sdk.logger?.warn?.(`[outbox] 写不进：${e?.message}`); }
+  };
+  const outboxPush = async (from, to, text) => {
+    const list = await outboxRead();
+    list.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, from, to, text, at: Date.now() });
+    await outboxWrite(list);
+    return list.length;
+  };
+  let outboxBusy = false;
+  async function pumpOutbox() {
+    if (outboxBusy) return;
+    const now0 = await outboxRead();
+    if (!now0.length) return;
+    outboxBusy = true;
+    try {
+      const list = await outboxRead();
+      const head = list[0];
+      if (!head) return;
+      // 过期就扔，别半夜堆一堆
+      if (Date.now() - Number(head.at || 0) > OUTBOX_TTL_MIN * 60000) {
+        list.shift();
+        await outboxWrite(list);
+        await sdk.logger?.warn?.(`[outbox] 过期丢弃 ${head.from} -> ${head.to}`);
+        return;
+      }
+      const ch = (cfg.characters || []).find((c) => c.id === head.to);
+      // 对方的主会话地址：优先绝对路径，再退回会话 id。
+      const addr = String(ch?.mainSessionPath || ch?.mainSession || "").trim();
+      if (!addr) {
+        list.shift();
+        await outboxWrite(list);
+        await sdk.logger?.warn?.(`[outbox] ${head.to} 没配主会话，丢掉`);
+        return;
+      }
+      const target = addr.startsWith("sess_") ? { sessionId: addr } : { sessionPath: addr };
+      // 对方正在跑就先不动，等下一拍（读状态不切 agent，几十毫秒）
+      let busy = false;
+      try {
+        const g = await sdk.sessions.get({ ...target, scope: "all" });
+        busy = !!g?.session?.isStreaming;
+      } catch { busy = false; }
+      if (busy) {
+        await sdk.logger?.info?.(`[outbox] ${head.to} 正在跑，等下一拍`);
+        return;
+      }
+      try {
+        await sdk.sessions.sendCustom({
+          ...target,
+          scope: "all",
+          content: `（${NAMES[head.from] || head.from} 带话：${head.text}）`,
+          display: false,
+          customType: "juzishu.talk",
+          triggerTurn: true,
+        });
+        await sdk.logger?.info?.(`[outbox] ${head.from} -> ${head.to}: 递到了`);
+      } catch (e) {
+        const msg = String(e?.message || e);
+        if (!/timeout/i.test(msg)) {
+          await sdk.logger?.warn?.(`[outbox] ${head.from} -> ${head.to}: 留队重试 ${msg}`);
+          return;
+        }
+        // 宿主 30s 上限：实测消息已落盘，按送达处理，别让她重发
+        await sdk.logger?.warn?.(`[outbox] ${head.from} -> ${head.to}: 回执超时，按已落盘处理`);
+      }
+      list.shift();
+      await outboxWrite(list);
+    } finally {
+      outboxBusy = false;
+    }
+  }
+
   // 首次启动不自动铺角色：人由 Hana 建，橘子树只接（见 api/agents.js）
 
   // 数据目录里有角色包、但配置里没有的：自动补一条（以前手动放进去的角色信页/时钟都不认）。
@@ -157,6 +248,16 @@ export default defineApp(async (sdk) => {
 
   const SLOT_NAME = { morning: "早档", noon: "中档", evening: "晚档", night: "收尾档" };
 
+  // 跟别的角色递话：只说工具怎么用，不写“必须回”的清单——回不回是她自己的事。
+  // 措辞跟着开关走：没开真实模式时走“先排待转达”，不能跟她说“一次就送到”。
+  const talkHint = () =>
+    "\n[给别的角色带话] 用 `talk_to`：`to` 填她的 id、`text` 填那句话。" +
+    (cfg.defaults?.realMode === true
+      ? "一次就送到她那边。"
+      : "会先排进待转达，用户点过才送到她那边。") +
+    "别用 `session` 那一套去找去递，那个会立草稿卡等人点。\n" +
+    "话要说给她听——在自己屋里说一遍，不算递。";
+
   // 工具叫法只写在这一处，所有工具描述末尾拼它。
   // 之前每个工具各写一段，其中两处把 server 写成了 app__juzishu，
   // 结果她照着填三次都被拒——错在我们的说明，不在她。
@@ -165,9 +266,11 @@ export default defineApp(async (sdk) => {
   const HOW_TO_CALL_HEAD =
     "**这工具要先 tool_search 查名字，别猜、别跳过；一次没查到就再查一次。**\n";
 
+  // 不写死前缀：App 的 id 里带横杠还是下划线、宿主怎么转义，都不是我们说了算。
+  // 只教她“照抄整串、括号里那个填 server”，换成任何 id 都不会翻车。
   const HOW_TO_CALL =
-    "**怎么调**：先 tool_search 查到整串，形如 `app__juzishu__<工具名>_<哈希>（juzishu）`——" +
-    "**括号里那个 `juzishu` 填 server，前面整串填 tool**。别自己拼前缀，也别把 server 写成 app__juzishu。";
+    "**怎么调**：先 tool_search 查到整串（形如 `app__…__<工具名>_<哈希>（<server 名>）`）——" +
+    "**原样照抄**：整串填 tool，括号里那个填 server。别自己拼前缀、别改里面的横杠和下划线——以宿主给出的那串为准。";
 
   // 同一间房同时被 tick 和 redraft 要，会各建一间（23:43 就这么建重了两间）。
   // 用一个 pending 表把并发擋在门外。
@@ -450,7 +553,8 @@ export default defineApp(async (sdk) => {
   /** 把一条跨角色消息投进对方主会话：带「某人带话」标记，display:false，不冒充用户说话。 */
   async function deliverTalk(from, to, text) {
     const ch = (cfg.characters || []).find((c) => c.id === to);
-    const addr = String(ch?.mainSession || "").trim();
+    // 同 talk_to：优先绝对路径。
+    const addr = String(ch?.mainSessionPath || ch?.mainSession || "").trim();
     if (!addr) return { ok: false, err: `${to} 没配主会话，发不过去` };
     const name = NAMES[from] || from;
     try {
@@ -802,8 +906,16 @@ export default defineApp(async (sdk) => {
       // 只注自己名册里的人。同一个宿主装了两个橘子树、或者别的 App 也想注入时，
       // 谁的人谁注——抢了就会把别人的状态和人格锢挡在门外。
       const roster = Array.isArray(cfg.characters) ? cfg.characters : [];
-      if (roster.length && !roster.some((c) => c && c.id === agentId))
+      const mineCh = roster.find((c) => c && c.id === agentId);
+      if (!mineCh)
         return await skip("not-in-roster", agentId, `roster=[${roster.map((c) => c && c.id).join(",")}]`);
+      // 进了名册还不够：得真有一封信要写（信目录或档位），不然只是个空壳。
+      // 名册空也要拦：空名册不等于“谁都可以”，那会把宿主里所有 agent 都注一遍。
+      {
+        const hasLetters = !!(mineCh.lettersDir && String(mineCh.lettersDir).trim());
+        const hasSlots = Array.isArray(mineCh.slots) && mineCh.slots.length > 0;
+        if (!hasLetters && !hasSlots) return await skip("not-a-character", agentId);
+      }
 
       // 上一句她自己说的 / 再上一句他说的（回望用）
       let prevAssistant = null;
@@ -905,7 +1017,7 @@ export default defineApp(async (sdk) => {
         entries,
         text,
         timeBlock: tBlock,
-        stateBlock: sBlock,
+        stateBlock: sBlock + talkHint(),
         recall,
         maxChars: Number(cfg.defaults?.inject?.maxChars) || 4000,
       });
@@ -1029,7 +1141,6 @@ export default defineApp(async (sdk) => {
           placeClear: { type: "boolean", description: "清掉实况位置（回到信里的预排）" },
           specialAdd: { type: "object", description: "加特殊状态 {name, effect, until}" },
           specialClear: { type: "string", description: "解除特殊状态（给 name）" },
-          money: { type: "string", description: "钱（余额）" },
         },
         required: ["agentId"],
       },
@@ -1339,20 +1450,30 @@ export default defineApp(async (sdk) => {
       description:
         HOW_TO_CALL_HEAD +
         "给另一个 agent 发一条话（直接送到对方那里，不用等人点确认）。\n" +
+        "**跨角色发消息就用这个。**别用宿主的 `session` 去发——那个会生成一张草稿卡等人确认，\n" +
+        "你以为发了，实际挂在一边。搜的时候搜「发消息 给另一个角色 带话」，就能撞到这个。\n" +
         "只说内容，不要把“请转达”这种话也写进去——它就是一条当面说的话。\n" +
+        "有话要说就真递过去；在自己屋里说一遍，不算递。\n" +
         "`to` 填对方在配置里的 id（拿不准就读 `/config` 里的 characters[].id，别猜）。\n" +
         HOW_TO_CALL,
       parameters: {
         type: "object",
         properties: {
-          agentId: { type: "string", description: "发信人（自己）" },
+          agentId: { type: "string", description: "发信人；不用填，默认就是你自己" },
           to: { type: "string", description: "收信人：配置里的角色 id" },
           text: { type: "string", description: "要说的那句话" },
         },
-        required: ["agentId", "to", "text"],
+        required: ["to", "text"],
       },
-      async execute(input) {
-        const from = String(input?.agentId || "");
+      async execute(input, exec) {
+        // 发信人默认从会话路径取：让她多填一格只会多一个出错的机会。
+        let from = String(input?.agentId || "").trim();
+        if (!from) {
+          const sp = String(exec?.context?.sessionPath || "");
+          const m = sp.match(/[\\/]agents[\\/]([^\\/]+)[\\/]/);
+          from = m ? m[1] : "";
+        }
+        if (!from) return { content: [{ type: "text", text: "ERR: 认不出你是谁，把 agentId 填上" }] };
         const to = String(input?.to || "").trim();
         const text = String(input?.text || "").trim();
         if (!text) return { content: [{ type: "text", text: "ERR: 没写内容" }] };
@@ -1373,26 +1494,16 @@ export default defineApp(async (sdk) => {
           }
         }
         const ch = (cfg.characters || []).find((c) => c.id === to);
-        const addr = String(ch?.mainSession || "").trim();
+        // 主会话地址：优先 mainSessionPath（绝对路径），再退回 mainSession。
+        // 只读 mainSession 会把 sess_xxx 当路径传进去，宿主报
+        // deliverCustomMessage: path must be an absolute path，而且每重试一次就重生一轮上下文。
+        const addr = String(ch?.mainSessionPath || ch?.mainSession || "").trim();
         if (!addr) return { content: [{ type: "text", text: `ERR: ${to} 没配主会话，发不过去` }] };
 
         try {
-          const p = sdk.sessions.sendCustom({
-            ...(addr.startsWith("sess_") ? { sessionId: addr } : { sessionPath: addr }),
-            scope: "all",
-            content: `（${NAMES[from] || from} 带话：${text}）`,
-            display: false,
-            customType: "juzishu.talk",
-            triggerTurn: true,
-          });
-          const ack = await Promise.race([
-            p.then(() => "sent").catch((e) => "error:" + (e?.message || e)),
-            new Promise((r) => setTimeout(() => r("dispatched"), 2500)),
-          ]);
-          await sdk.logger?.info?.(`[talk_to] ${from} -> ${to}: ${ack}`);
-          if (String(ack).startsWith("error")) {
-            return { content: [{ type: "text", text: `没发出去：${ack}` }] };
-          }
+          // 只入队，不在这里发。发送要切 agent、占住宿主通道，工具结果就送不回去，
+          // 宿主会判 30 秒超时、跟她说“失败”，她就重发。交给后台泵。
+          await outboxPush(from, to, text);
           return { content: [{ type: "text", text: `递给${NAMES[to] || to}了。` }] };
         } catch (e) {
           return { content: [{ type: "text", text: `ERR: ${e?.message || e}` }] };
@@ -1522,12 +1633,33 @@ export default defineApp(async (sdk) => {
     registerClockRoutes(app, { clock, characters: CLOCK_CHARS });
     // 建/删/接入都写回配置：配置才是注入、时钟、信的派头。
     const onCharacterCreated = async (id) => {
+      let boundMain = "";
       try {
         const d = characterStore.load(id);
         const prof = d.profile || {};
         const slots = (Array.isArray(prof.letters?.slots) ? prof.letters.slots : [])
           .map((s) => ({ id: String(s.id || ""), at: String(s.at || "") }))
           .filter((s) => s.id && /^\d{1,2}:\d{2}$/.test(s.at));
+        // 主会话：空的就自动绑一条。
+        // 不绑的后果不是“少个功能”：三档不派、心跳不发、递话发不出，
+        // 人看到的是“装好了但什么都不发生”——还找不到原因。
+        let autoMain = "";
+        let autoPath = "";
+        try {
+          const r = await sdk.sessions?.list?.({ scope: "all", lifecycle: "active", agentId: id });
+          const arr = Array.isArray(r?.sessions) ? r.sessions : Array.isArray(r) ? r : [];
+          const skipKind = /^juzishu-(letter|urge|patch)$/;
+          const usable = arr
+            .filter((s) => s && s.path && !skipKind.test(String(s.kind || "")))
+            .sort((a, b) => (Date.parse(b.modified || 0) || 0) - (Date.parse(a.modified || 0) || 0));
+          const top = usable[0];
+          if (top) {
+            autoMain = String(top.sessionId || top.path || "").trim();
+            // 路径一并写上：today_talk 的“只看主会话”靠它，不写就退化成全看。
+            autoPath = String(top.path || "").trim();
+          }
+        } catch { /* 拿不到会话就先空着，面板上能填 */ }
+        const prev = (Array.isArray(cfg.characters) ? cfg.characters : []).find((x) => x && x.id === id) || {};
         const entry = {
           id,
           name: prof.name || id,
@@ -1541,13 +1673,18 @@ export default defineApp(async (sdk) => {
           slots: slots.length
             ? slots
             : [{ id: "morning", at: "07:00" }, { id: "noon", at: "12:00" }, { id: "evening", at: "18:00" }],
-          mainSession: "",
+          // 已经绑过的不动：人自己选过就别覆盖。
+          mainSession: prev.mainSession || autoMain,
+          ...(prev.mainSessionPath || autoPath
+            ? { mainSessionPath: prev.mainSessionPath || autoPath }
+            : {}),
         };
         const list = Array.isArray(cfg.characters) ? cfg.characters : [];
         const i = list.findIndex((x) => x && x.id === id);
         if (i >= 0) list[i] = { ...list[i], ...entry };
         else list.push(entry);
         cfg.characters = list;
+        boundMain = entry.mainSession || "";
         saveConfig({ dataDir, cfg });
         try {
           if (dataDir) await letterStore.ensureDay(pathMod.join(dataDir, "letters", id), letterStore.todayYMD(id), "");
@@ -1595,7 +1732,7 @@ export default defineApp(async (sdk) => {
                   {
                     mood: "", moodLevel: "", moodUnder: null, care: [],
                     body: { hunger: "", energy: "" }, special: [],
-                    money: "", place: null,
+                    place: null,
                     updatedAt: new Date().toISOString(),
                   },
                   null, 2
@@ -1617,7 +1754,16 @@ export default defineApp(async (sdk) => {
             return !s || s.includes("{{userName}}") || /^#\s*角色名\s*$/m.test(s);
           };
           // identity 真实就用它；是模板/空的话，只给一句最普通的身份
-          const body = isTpl(d.identity) ? [`# ${nm}`, "", `- 你是 ${nm}。`].join("\n") : String(d.identity).trim().slice(0, 2000);
+          // identity 真实就用它；是模板/空的话，只给一句最普通的身份。
+          // 超长不收字，只从段落边界断开——不递半句话。
+          const clipAtPara = (s, max = 2000) => {
+            const t = String(s || "").trim();
+            if (t.length <= max) return t;
+            const cut = t.slice(0, max);
+            const at = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf("\n## "), cut.lastIndexOf("\n# "));
+            return (at > max * 0.5 ? cut.slice(0, at) : cut).trim();
+          };
+          const body = isTpl(d.identity) ? [`# ${nm}`, "", `- 你是 ${nm}。`].join("\n") : clipAtPara(d.identity);
           if (!hasAnchor) {
             await drawerStore.create({
               agentId: id,
@@ -1645,6 +1791,7 @@ export default defineApp(async (sdk) => {
           }
         } catch { /* 补不齐也不拦建卡 */ }
       } catch { /* 写不回配置不拦建卡 */ }
+      return { mainSession: boundMain };
     };
     const onCharacterRemoved = async (id) => {
       try {
@@ -1785,8 +1932,12 @@ export default defineApp(async (sdk) => {
 
   });
 
+  // 跳角色递话：后台泵。三秒看一眼队头，对方闲着才递（读状态不切 agent）。
+  const talkTimer = setInterval(() => { pumpOutbox().catch(() => {}); }, 3000);
+
   return () => {
     clearInterval(timer);
     clearInterval(urgeTimer);
+    clearInterval(talkTimer);
   };
 });

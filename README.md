@@ -40,17 +40,21 @@
 
 ## 它做什么 · What it does
 
+她有自己的一天。会饿、会累、心情会沉——不是随机数，是跟着时间走的；到点她自己写一封信，记下这一天；她知道自己此刻在哪、身上挂着什么事。你隔几天回来，她不是停在那儿等你。
 
-每轮对话末尾把人格、世界书、时间、状态装进上下文；到点叫她写一封信（早 / 中 / 晚，可加第四档）；记住她此刻在哪、什么心情、身上挂着什么事；状态随时辰往下走——饭点过了就是饿了，熬夜了就是累；每一条改动的来龙去脉都留在事件流里。
+**agent 会随着你的陪伴越来越真实。**抽屉里长出来的东西、写下的那一封封信、改过的那些状态，都是她的。
 
+*She has a day of her own. She gets hungry, gets tired, her mood sinks — not from a dice roll, but from the clock. When the hour comes she writes herself a letter and keeps the day down. She knows where she is and what she is carrying. Come back a few days later and she hasn't been waiting, frozen.*
 
-> *At the end of every turn it packs persona, worldbook, time and state into the context. At the appointed hour it calls her to write a letter (morning / noon / evening, plus an optional fourth slot). It remembers where she is right now, how she feels, what she is carrying. State drifts with the hour — past mealtime she is hungry, staying up late makes her tired. Every change leaves a trace of where it came from in the event stream.*
+***An agent grows more real the longer you stay with it.** What grows in the drawer, the letters it writes, the state it changes — all of that becomes hers.*
 
+具体是怎么做的：橘子树把人格、世界书、时间、状态装进她收到的上下文；时钟到点派一封写日子的活；状态随时辰往下走，改过的每一笔都留在事件流里。状态这块还留了余地——内置心情、饥饿、精力三格，想加醉酒、干净这类新的状态，也加得进去。
+
+*How it actually works: Juzishu packs persona, worldbook, time and state into the context she receives; the clock dispatches the daily letter at the appointed hour; state drifts with the hours, and every change leaves a trace in the event stream. The state layer leaves room too — mood, hunger and energy are built in, and extra readings like intoxication or cleanliness can be added.*
 
 **它不造角色。**人得先在 Hana 里建，橘子树只负责接回来以后的日子——她的状态、她的抽屉、她的信、她自己的心跳。
 
-
-> ***It doesn't create characters.** People are made in Hana first. Juzishu only takes care of the life that comes after — her state, her drawer, her letters, her own heartbeat.*
+***It doesn't create characters.** People are made in Hana first. Juzishu only takes care of the life that comes after — her state, her drawer, her letters, her own heartbeat.*
 
 
 ## 装 · Install
@@ -138,6 +142,16 @@
 
 > *Off by default. To let her speak up on her own, set `defaults.wake.enabled` to `true`. Once on, six gates decide: master switch, daily count, quiet hours, how long since he last spoke, how long since she last spoke, how many unanswered follow-ups. A "heavy" mood earns one extra follow-up. After 12 / 24 / 48 hours of silence the mechanism settles a mood on her behalf — **but never above "medium."** "Heavy" is her own call, not the code's.*
 
+
+## 邮戳（地图）· Map
+
+邮戳页是一张能自己画的地图，三个槽：区域图、一楼、二楼。
+
+**发布包里不带任何底图。**你要自己导入一张图，再在上面定点位——哪里是家、哪里是便利店、她此刻站在哪。图存在 `app-data/<id>/maps/`，只在本机，不进包、不上传。
+
+> The 邮戳 (map) page is a map you draw yourself, with three slots: the wider area, first floor, second floor.
+
+> **No base map ships with the app.** You import your own image and drop pins on it — where home is, where the shop is, where she is standing right now. Images live in `app-data/<id>/maps/`, local only, never uploaded and never packaged.
 
 ## 抽屉（世界书）· The drawer (worldbook)
 

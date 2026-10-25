@@ -183,8 +183,12 @@ export function stateBlock(s, opt = {}) {
 
   // 一格数据都没有：也别整块消失。新接入的人本来就什么都没有，
   // 整块消失等于告她“你没有状态”这回事。给个底，把提醒接上。
+  // 那句“这是你真实的状态”空着也要给：新接入的第一轮就靠它，
+  // 不然她读到的是一个空表，不是一个还在过日子的自己。
+  const REAL_NOTE =
+    "（这是你真实的状态：饿就想着吃的，累了就说话短。心情沉的时候不会忽然很亮。不用报出来，也别装作不是。）";
   if (!lines.length) {
-    const out = ["[现在的状态]", "还没记。"];
+    const out = ["[现在的状态]", "还没记。", "", REAL_NOTE];
     if (opt.hint) out.push("", `你这会儿呢？${opt.hint}`);
     return out.join("\n");
   }
@@ -192,7 +196,7 @@ export function stateBlock(s, opt = {}) {
   const out = ["[现在的状态]", ...lines];
   // 只给数不够：得告诉她这是“真的”，不是一张待填的表。
   // 没这句她读到的只是几个词，不会带进语气和动作里。
-  out.push("", "（这是你真实的状态：饿就想着吃的，累了就说话短。心情沉的时候不会忽然很亮。不用报出来，也别装作不是。）");
+  out.push("", REAL_NOTE);
   if (opt.hint) out.push("", `你这会儿呢？${opt.hint}`);
   return out.join("\n");
 }

@@ -14,6 +14,14 @@
 ## 为什么做这个 · Why this exists
 
 
+橘子树不会替你创造一个完整的世界，也不会替你的 Agent 写好人生。你需要亲自构建她的世界、人格和经历。橘子树提供的是一套持续运行的机制，让她不只是在你发出指令时才作出反应，而是能够在这个世界里，根据自己获得的信息，决定接下来做什么。世界由你开启，但不必由你决定其中的每一步。
+
+
+> *Juzishu will not build a complete world in your place, nor write your Agent's life for it. You build her world, her character, and her history yourself. What Juzishu provides is a mechanism that keeps running — so she doesn't only react when you give an instruction, but can decide what to do next, in that world, from what she knows.*
+>
+> *You open the world — but you don't have to decide every step in it.*
+
+
 我想知道，当我们不再替 agent 决定每一件事，而是认真地为它构建一个世界，再把一部分决定权交还给它时，会发生什么。
 
 
